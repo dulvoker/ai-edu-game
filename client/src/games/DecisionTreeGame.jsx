@@ -1,30 +1,85 @@
 import { useState } from 'react'
 
-// ── Data ──────────────────────────────────────────────────────
+// ── Difficulty config ─────────────────────────────────────────
+//
+// Each difficulty has its own feature set, creature set, hidden rule, and
+// pre-computed optimal node count. Optimal counts are achieved by:
+//   Easy   (3): Wings? → Dangerous | Safe
+//   Normal (5): Wings? → Dangerous | Claws? → Dangerous | Safe
+//   Hard   (7): Wings? → Dangerous | Claws? → Dangerous | Large? → Dangerous | Safe
+//
+// Note – Normal omits the (hasWings=F, isLarge=F, hasClaws=T) creature so that
+// Claws alone perfectly separates the Wings=F group, enabling a 5-node optimal.
+// Hard uses rule: dangerous if hasWings || hasClaws || isLarge; hasTail is a
+// distractor that tempts the player into unnecessary splits.
 
-// DIFFICULTY (for future adaptive system):
-// Easy:   2 features (hasWings, isLarge), 6 creatures
-// Normal: 3 features (hasWings, isLarge, hasClaws), 8 creatures ← current
-// Hard:   4 features (hasWings, isLarge, hasClaws, hasPoison), 10 creatures
+const DIFFICULTIES = {
+  easy: {
+    label: 'Easy',
+    description: '2 features · 6 creatures',
+    optimal: 3,
+    // Hidden rule: dangerous if hasWings
+    features: [
+      { key: 'hasWings', label: 'Wings', icon: '🪶' },
+      { key: 'hasClaws', label: 'Claws', icon: '🦶' },
+    ],
+    creatures: [
+      { id: 1,  emoji: '🐇', name: 'Rabbit',   hasWings: false, hasClaws: false, label: 'safe'      },
+      { id: 2,  emoji: '🐸', name: 'Frog',     hasWings: false, hasClaws: false, label: 'safe'      },
+      { id: 3,  emoji: '🦔', name: 'Hedgehog', hasWings: false, hasClaws: true,  label: 'safe'      },
+      { id: 4,  emoji: '🐝', name: 'Bee',      hasWings: true,  hasClaws: false, label: 'dangerous' },
+      { id: 5,  emoji: '🦅', name: 'Eagle',    hasWings: true,  hasClaws: true,  label: 'dangerous' },
+      { id: 6,  emoji: '🦇', name: 'Bat',      hasWings: true,  hasClaws: false, label: 'dangerous' },
+    ],
+  },
 
-const FEATURES = [
-  { key: 'hasWings', label: 'Wings', icon: '🪶' },
-  { key: 'isLarge',  label: 'Large', icon: '📏' },
-  { key: 'hasClaws', label: 'Claws', icon: '🦶' },
-]
+  normal: {
+    label: 'Normal',
+    description: '3 features · 8 creatures',
+    optimal: 5,
+    // Hidden rule: dangerous if hasWings || (isLarge && hasClaws)
+    features: [
+      { key: 'hasWings', label: 'Wings', icon: '🪶' },
+      { key: 'isLarge',  label: 'Large', icon: '📏' },
+      { key: 'hasClaws', label: 'Claws', icon: '🦶' },
+    ],
+    creatures: [
+      { id: 1,  emoji: '🐇', name: 'Rabbit',   hasWings: false, isLarge: false, hasClaws: false, label: 'safe'      },
+      { id: 2,  emoji: '🦊', name: 'Fox',      hasWings: false, isLarge: false, hasClaws: false, label: 'safe'      },
+      { id: 3,  emoji: '🐘', name: 'Elephant', hasWings: false, isLarge: true,  hasClaws: false, label: 'safe'      },
+      { id: 4,  emoji: '🦁', name: 'Lion',     hasWings: false, isLarge: true,  hasClaws: true,  label: 'dangerous' },
+      { id: 5,  emoji: '🐝', name: 'Bee',      hasWings: true,  isLarge: false, hasClaws: false, label: 'dangerous' },
+      { id: 6,  emoji: '🦅', name: 'Eagle',    hasWings: true,  isLarge: false, hasClaws: true,  label: 'dangerous' },
+      { id: 7,  emoji: '🦢', name: 'Swan',     hasWings: true,  isLarge: true,  hasClaws: false, label: 'dangerous' },
+      { id: 8,  emoji: '🐉', name: 'Dragon',   hasWings: true,  isLarge: true,  hasClaws: true,  label: 'dangerous' },
+    ],
+  },
 
-// Hidden rule: dangerous if hasWings || (isLarge && hasClaws)
-// All 8 combinations of 3 binary features are covered.
-const CREATURES = [
-  { id: 1, emoji: '🐇', name: 'Rabbit',   hasWings: false, isLarge: false, hasClaws: false, label: 'safe'      },
-  { id: 2, emoji: '🦔', name: 'Hedgehog', hasWings: false, isLarge: false, hasClaws: true,  label: 'safe'      },
-  { id: 3, emoji: '🐘', name: 'Elephant', hasWings: false, isLarge: true,  hasClaws: false, label: 'safe'      },
-  { id: 4, emoji: '🦁', name: 'Lion',     hasWings: false, isLarge: true,  hasClaws: true,  label: 'dangerous' },
-  { id: 5, emoji: '🐝', name: 'Bee',      hasWings: true,  isLarge: false, hasClaws: false, label: 'dangerous' },
-  { id: 6, emoji: '🦅', name: 'Eagle',    hasWings: true,  isLarge: false, hasClaws: true,  label: 'dangerous' },
-  { id: 7, emoji: '🦢', name: 'Swan',     hasWings: true,  isLarge: true,  hasClaws: false, label: 'dangerous' },
-  { id: 8, emoji: '🐉', name: 'Dragon',   hasWings: true,  isLarge: true,  hasClaws: true,  label: 'dangerous' },
-]
+  hard: {
+    label: 'Hard',
+    description: '4 features · 10 creatures',
+    optimal: 7,
+    // Hidden rule: dangerous if hasWings || hasClaws || isLarge  (hasTail is a distractor)
+    features: [
+      { key: 'hasWings', label: 'Wings', icon: '🪶' },
+      { key: 'isLarge',  label: 'Large', icon: '📏' },
+      { key: 'hasClaws', label: 'Claws', icon: '🦶' },
+      { key: 'hasTail',  label: 'Tail',  icon: '🐾' },
+    ],
+    creatures: [
+      { id: 1,  emoji: '🐇', name: 'Rabbit',   hasWings: false, isLarge: false, hasClaws: false, hasTail: false, label: 'safe'      },
+      { id: 2,  emoji: '🐟', name: 'Fish',     hasWings: false, isLarge: false, hasClaws: false, hasTail: true,  label: 'safe'      },
+      { id: 3,  emoji: '🐝', name: 'Bee',      hasWings: true,  isLarge: false, hasClaws: false, hasTail: false, label: 'dangerous' },
+      { id: 4,  emoji: '🦅', name: 'Eagle',    hasWings: true,  isLarge: false, hasClaws: true,  hasTail: false, label: 'dangerous' },
+      { id: 5,  emoji: '🦢', name: 'Swan',     hasWings: true,  isLarge: true,  hasClaws: false, hasTail: false, label: 'dangerous' },
+      { id: 6,  emoji: '🐉', name: 'Dragon',   hasWings: true,  isLarge: true,  hasClaws: true,  hasTail: true,  label: 'dangerous' },
+      { id: 7,  emoji: '🦁', name: 'Lion',     hasWings: false, isLarge: true,  hasClaws: true,  hasTail: true,  label: 'dangerous' },
+      { id: 8,  emoji: '🐘', name: 'Elephant', hasWings: false, isLarge: true,  hasClaws: false, hasTail: false, label: 'dangerous' },
+      { id: 9,  emoji: '🦔', name: 'Hedgehog', hasWings: false, isLarge: false, hasClaws: true,  hasTail: false, label: 'dangerous' },
+      { id: 10, emoji: '🦊', name: 'Fox',      hasWings: false, isLarge: false, hasClaws: true,  hasTail: true,  label: 'dangerous' },
+    ],
+  },
+}
 
 // ── Tree utilities ────────────────────────────────────────────
 
@@ -46,6 +101,12 @@ function countNodes(node) {
   return 1 + countNodes(node.yes) + countNodes(node.no)
 }
 
+function optimalityRating(nodes, optimal) {
+  if (nodes === optimal)          return { label: 'Optimal!',                    dot: '🟢', color: 'text-green-700'  }
+  if (nodes <= optimal + 2)       return { label: 'Good, but can be improved',   dot: '🟡', color: 'text-yellow-700' }
+  return                                 { label: 'Try to simplify your tree',   dot: '🔴', color: 'text-red-700'    }
+}
+
 // ── Tutorial ──────────────────────────────────────────────────
 
 function Tutorial({ onDismiss }) {
@@ -60,7 +121,7 @@ function Tutorial({ onDismiss }) {
             features. Each <strong>internal node</strong> tests one feature and routes left or
             right; each <strong>leaf node</strong> gives a final verdict. The challenge is
             choosing which features to test — and in what order — so every creature lands in
-            the correct leaf.
+            the correct leaf with as few nodes as possible.
           </p>
         </div>
 
@@ -97,8 +158,8 @@ function Tutorial({ onDismiss }) {
         </div>
 
         <p className="text-sm text-gray-500">
-          In the game you'll classify 8 creatures using up to 3 features. Look at which
-          creatures are dangerous and try to spot the pattern — then encode it as a tree.
+          Examine which creatures are dangerous and spot the pattern — then encode it as a tree.
+          After you get everything right, try to reach the optimal node count.
         </p>
       </div>
       <button
@@ -113,7 +174,7 @@ function Tutorial({ onDismiss }) {
 
 // ── Creature Card ─────────────────────────────────────────────
 
-function CreatureCard({ creature, correct }) {
+function CreatureCard({ creature, correct, features }) {
   const border =
     correct === null ? 'border-gray-200' :
     correct          ? 'border-green-400 bg-green-50' :
@@ -140,7 +201,7 @@ function CreatureCard({ creature, correct }) {
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
-        {FEATURES.map(f => (
+        {features.map(f => (
           <span
             key={f.key}
             className={`rounded px-1.5 py-0.5 text-xs ${
@@ -158,10 +219,9 @@ function CreatureCard({ creature, correct }) {
 }
 
 // ── Node Picker ───────────────────────────────────────────────
-// Rendered at every empty slot in the tree.
 
-function NodePicker({ creatures, usedFeatures, onUpdate }) {
-  const available = FEATURES.filter(f => !usedFeatures.includes(f.key))
+function NodePicker({ creatures, usedFeatures, features, onUpdate }) {
+  const available = features.filter(f => !usedFeatures.includes(f.key))
 
   return (
     <div className="space-y-2.5 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 p-3">
@@ -210,15 +270,14 @@ function NodePicker({ creatures, usedFeatures, onUpdate }) {
 }
 
 // ── Tree Node View ────────────────────────────────────────────
-// Recursive component. Each node receives its subtree + the creatures
-// that reach it, so it can show partitioned counts and emojis.
 
-function TreeNodeView({ node, creatures, usedFeatures = [], onUpdate }) {
+function TreeNodeView({ node, creatures, usedFeatures = [], features, onUpdate }) {
   if (!node) {
     return (
       <NodePicker
         creatures={creatures}
         usedFeatures={usedFeatures}
+        features={features}
         onUpdate={onUpdate}
       />
     )
@@ -249,8 +308,7 @@ function TreeNodeView({ node, creatures, usedFeatures = [], onUpdate }) {
     )
   }
 
-  // Split node
-  const feat = FEATURES.find(f => f.key === node.feature)
+  const feat = features.find(f => f.key === node.feature)
   const yes = creatures.filter(c => c[node.feature])
   const no = creatures.filter(c => !c[node.feature])
   const newUsed = [...usedFeatures, node.feature]
@@ -282,6 +340,7 @@ function TreeNodeView({ node, creatures, usedFeatures = [], onUpdate }) {
             node={node.yes}
             creatures={yes}
             usedFeatures={newUsed}
+            features={features}
             onUpdate={n => onUpdate({ ...node, yes: n })}
           />
         </div>
@@ -293,6 +352,7 @@ function TreeNodeView({ node, creatures, usedFeatures = [], onUpdate }) {
             node={node.no}
             creatures={no}
             usedFeatures={newUsed}
+            features={features}
             onUpdate={n => onUpdate({ ...node, no: n })}
           />
         </div>
@@ -305,13 +365,23 @@ function TreeNodeView({ node, creatures, usedFeatures = [], onUpdate }) {
 
 export default function DecisionTreeGame() {
   const [showTutorial, setShowTutorial] = useState(true)
+  const [diffKey, setDiffKey] = useState('normal')
   const [tree, setTree] = useState(null)
-  const [results, setResults] = useState(null)  // { map: Map<id, bool>, correct: number }
+  const [results, setResults] = useState(null)
+
+  const diff = DIFFICULTIES[diffKey]
+  const { features, creatures, optimal } = diff
+
+  const handleDifficulty = (key) => {
+    setDiffKey(key)
+    setTree(null)
+    setResults(null)
+  }
 
   const handleCheck = () => {
     const map = new Map()
     let correct = 0
-    for (const c of CREATURES) {
+    for (const c of creatures) {
       const ok = classify(tree, c) === c.label
       map.set(c.id, ok)
       if (ok) correct++
@@ -325,7 +395,9 @@ export default function DecisionTreeGame() {
   }
 
   const complete = isComplete(tree)
-  const perfect = results?.correct === CREATURES.length
+  const perfect = results?.correct === creatures.length
+  const nodes = countNodes(tree)
+  const rating = perfect ? optimalityRating(nodes, optimal) : null
 
   if (showTutorial) return <Tutorial onDismiss={() => setShowTutorial(false)} />
 
@@ -336,7 +408,7 @@ export default function DecisionTreeGame() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Decision Trees</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Build a tree that correctly classifies all 8 creatures.
+            Build a tree that correctly classifies all {creatures.length} creatures.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -344,7 +416,7 @@ export default function DecisionTreeGame() {
             <span className={`text-sm font-semibold ${
               perfect ? 'text-green-600' : 'text-orange-600'
             }`}>
-              {results.correct}/{CREATURES.length} correct
+              {results.correct}/{creatures.length} correct
             </span>
           )}
           <button
@@ -364,16 +436,44 @@ export default function DecisionTreeGame() {
         </div>
       </div>
 
-      {/* Success banner */}
-      {perfect && (
+      {/* Difficulty selector */}
+      <div className="mt-4 flex items-center gap-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Difficulty</p>
+        <div className="flex overflow-hidden rounded-lg border border-gray-200">
+          {Object.entries(DIFFICULTIES).map(([key, d]) => (
+            <button
+              key={key}
+              onClick={() => handleDifficulty(key)}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                diffKey === key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {d.label}
+              <span className={`ml-1.5 text-xs ${diffKey === key ? 'text-blue-200' : 'text-gray-400'}`}>
+                {d.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Perfect: optimality banner */}
+      {perfect && rating && (
         <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
           <p className="font-semibold text-green-800">
-            🎉 Perfect! All {CREATURES.length} creatures correctly classified.
+            🎉 All {creatures.length} creatures correctly classified!
           </p>
-          <p className="mt-0.5 text-sm text-green-700">
-            Tree size: {countNodes(tree)} node{countNodes(tree) !== 1 ? 's' : ''}.
-            Can you do it with fewer?
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <span className="text-sm text-green-700">
+              Your tree: <strong>{nodes} node{nodes !== 1 ? 's' : ''}</strong>
+              {' '}| Optimal: <strong>{optimal} nodes</strong>
+            </span>
+            <span className={`text-sm font-semibold ${rating.color}`}>
+              {rating.dot} {rating.label}
+            </span>
+          </div>
         </div>
       )}
 
@@ -381,7 +481,7 @@ export default function DecisionTreeGame() {
       {results && !perfect && (
         <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4">
           <p className="text-sm font-medium text-orange-800">
-            {CREATURES.length - results.correct} creature{CREATURES.length - results.correct !== 1 ? 's' : ''} misclassified.
+            {creatures.length - results.correct} creature{creatures.length - results.correct !== 1 ? 's' : ''} misclassified.
             Adjust the tree and try again.
           </p>
         </div>
@@ -396,11 +496,12 @@ export default function DecisionTreeGame() {
             Creatures
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {CREATURES.map(c => (
+            {creatures.map(c => (
               <CreatureCard
                 key={c.id}
                 creature={c}
                 correct={results ? results.map.get(c.id) : null}
+                features={features}
               />
             ))}
           </div>
@@ -413,7 +514,8 @@ export default function DecisionTreeGame() {
           </p>
           <TreeNodeView
             node={tree}
-            creatures={CREATURES}
+            creatures={creatures}
+            features={features}
             onUpdate={setTree}
           />
         </div>
