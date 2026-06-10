@@ -1,9 +1,11 @@
 import { useParams } from 'react-router-dom'
 import { games } from '../data/content'
 import SearchGame from '../games/SearchGame'
+import DecisionTreeGame from '../games/DecisionTreeGame'
 
 const GAME_COMPONENTS = {
   search: SearchGame,
+  'decision-tree': DecisionTreeGame,
 }
 
 export default function GameDetailPage() {
