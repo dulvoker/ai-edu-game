@@ -4,7 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 
 const ROWS = 15
 const COLS = 15
-const STEP_MS = 30
+
+const SPEEDS = [
+  { label: 'Slow',   ms: 200 },
+  { label: 'Normal', ms: 100 },
+  { label: 'Fast',   ms: 30  },
+]
 
 const DIRS = {
   Up:    { dr: -1, dc:  0, wall: 'top',    opp: 'bottom' },
@@ -40,6 +45,23 @@ function generateMaze() {
     seen[nr][nc] = true
     stack.push({ r: nr, c: nc })
   }
+
+  // Extra-passage pass: randomly remove ~30% of remaining interior walls so
+  // the maze has more open areas and multiple viable paths, making the
+  // visual difference between BFS and DFS more pronounced.
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (r > 0 && cells[r][c].top && Math.random() < 0.3) {
+        cells[r][c].top = false
+        cells[r - 1][c].bottom = false
+      }
+      if (c > 0 && cells[r][c].left && Math.random() < 0.3) {
+        cells[r][c].left = false
+        cells[r][c - 1].right = false
+      }
+    }
+  }
+
   return cells
 }
 
@@ -144,6 +166,8 @@ export default function SearchGame() {
   const [algo, setAlgo] = useState('BFS')
   const [dirOrder, setDirOrder] = useState(['Up', 'Right', 'Down', 'Left'])
 
+  const [speed, setSpeed] = useState(1)        // index into SPEEDS; 1 = Normal
+
   const [frames, setFrames] = useState([])
   const [path, setPath] = useState(new Set())
   const [frameIdx, setFrameIdx] = useState(-1)
@@ -203,9 +227,9 @@ export default function SearchGame() {
         }
         return i + 1
       })
-    }, STEP_MS)
+    }, SPEEDS[speed].ms)
     return () => clearInterval(intervalRef.current)
-  }, [running, frames, path])
+  }, [running, frames, path, speed])
 
   // ── Handlers ─────────────────────────────────────────────────
 
@@ -302,6 +326,21 @@ export default function SearchGame() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Speed slider */}
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            Speed — <span className="normal-case font-normal">{SPEEDS[speed].label}</span>
+          </p>
+          <input
+            type="range"
+            min={0}
+            max={SPEEDS.length - 1}
+            value={speed}
+            onChange={e => setSpeed(Number(e.target.value))}
+            className="w-32 accent-blue-600"
+          />
         </div>
 
         {/* Action buttons */}
