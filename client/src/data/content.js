@@ -22,8 +22,9 @@ export const games = [
 ]
 
 export const tests = [
-  { id: 'search', title: 'Search Algorithms Test' },
-  { id: 'decision-tree', title: 'Decision Trees Test' },
+  { id: 'bfs', title: 'BFS Quiz', description: 'Test your knowledge of Breadth-First Search' },
+  { id: 'dfs', title: 'DFS Quiz', description: 'Test your knowledge of Depth-First Search' },
+  { id: 'decision-tree', title: 'Decision Trees Quiz', description: 'Test your understanding of decision tree concepts' },
   { id: 'neural-network', title: 'Neural Networks Test' },
   { id: 'reinforcement-learning', title: 'Reinforcement Learning Test' },
 ]
