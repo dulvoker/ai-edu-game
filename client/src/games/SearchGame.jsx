@@ -19,11 +19,16 @@ const DIRS = {
 }
 
 const key = (r, c) => `${r},${c}`
+const DEFAULT_START = { r: 0,        c: 0        }
+const DEFAULT_END   = { r: ROWS - 1, c: COLS - 1 }
 
-const DEFAULT_START = { r: 0,         c: 0         }
-const DEFAULT_END   = { r: ROWS - 1,  c: COLS - 1  }
+const TERRAIN = {
+  1: { label: 'Grass',    color: '#dcfce7' },
+  3: { label: 'Water',    color: '#dbeafe' },
+  5: { label: 'Mountain', color: '#fed7aa' },
+}
 
-// ── Maze generation (Recursive Backtracking) ──────────────────
+// ── Maze generation ───────────────────────────────────────────
 
 function generateMaze() {
   const cells = Array.from({ length: ROWS }, () =>
@@ -48,18 +53,14 @@ function generateMaze() {
     stack.push({ r: nr, c: nc })
   }
 
-  // Extra-passage pass: randomly remove ~30% of remaining interior walls so
-  // the maze has more open areas and multiple viable paths, making the
-  // visual difference between BFS and DFS more pronounced.
+  // Extra-passage pass: remove ~30% of remaining interior walls for more open areas.
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (r > 0 && cells[r][c].top && Math.random() < 0.3) {
-        cells[r][c].top = false
-        cells[r - 1][c].bottom = false
+        cells[r][c].top = false; cells[r - 1][c].bottom = false
       }
       if (c > 0 && cells[r][c].left && Math.random() < 0.3) {
-        cells[r][c].left = false
-        cells[r][c - 1].right = false
+        cells[r][c].left = false; cells[r][c - 1].right = false
       }
     }
   }
@@ -67,35 +68,39 @@ function generateMaze() {
   return cells
 }
 
-// ── Algorithm trace ───────────────────────────────────────────
-// Pre-computes every animation frame, the final path, and peak frontier size.
-// For DFS, directions are pushed in reverse so dirOrder[0] is explored first.
+function generateWeights() {
+  return Array.from({ length: ROWS }, () =>
+    Array.from({ length: COLS }, () => {
+      const r = Math.random()
+      if (r < 0.7) return 1  // Grass  70%
+      if (r < 0.9) return 3  // Water  20%
+      return 5                // Mountain 10%
+    })
+  )
+}
 
-function traceAlgorithm(cells, algo, dirOrder, startCell, endCell) {
+// ── Algorithm traces ──────────────────────────────────────────
+
+function traceSearchAlgorithm(cells, algo, dirOrder, startCell, endCell) {
   const startKey = key(startCell.r, startCell.c)
   const endKey   = key(endCell.r,   endCell.c)
-
-  const visited = new Set([startKey])
-  const parent  = new Map([[startKey, null]])
-  const frames  = []
+  const visited  = new Set([startKey])
+  const parent   = new Map([[startKey, null]])
+  const frames   = []
   let ds = [{ r: startCell.r, c: startCell.c }]
   let peakFrontier = 1
 
-  const snap = () =>
-    frames.push({
-      visited:  new Set(visited),
-      frontier: new Set(ds.map(({ r, c }) => key(r, c))),
-    })
-
+  const snap = () => frames.push({
+    visited:  new Set(visited),
+    frontier: new Set(ds.map(({ r, c }) => key(r, c))),
+  })
   snap()
 
-  // Reverse for DFS so that the first item in dirOrder is popped (explored) first
   const exploreOrder = algo === 'DFS' ? [...dirOrder].reverse() : dirOrder
 
   while (ds.length) {
     const { r, c } = algo === 'BFS' ? ds.shift() : ds.pop()
     if (key(r, c) === endKey) break
-
     for (const d of exploreOrder) {
       const { dr, dc, wall } = DIRS[d]
       if (cells[r][c][wall]) continue
@@ -106,22 +111,73 @@ function traceAlgorithm(cells, algo, dirOrder, startCell, endCell) {
       parent.set(nk, key(r, c))
       ds.push({ r: nr, c: nc })
     }
-
     if (ds.length > peakFrontier) peakFrontier = ds.length
     snap()
   }
 
-  // Reconstruct path end → start
   const path = new Set()
+  if (parent.has(endKey)) {
+    let cur = endKey
+    while (cur !== null) { path.add(cur); cur = parent.get(cur) ?? null }
+  }
+
+  return { frames, path, peakFrontier, nodesExpanded: visited.size }
+}
+
+function traceDijkstra(cells, weights, startCell, endCell) {
+  const startKey = key(startCell.r, startCell.c)
+  const endKey   = key(endCell.r,   endCell.c)
+  const dist     = { [startKey]: weights[startCell.r][startCell.c] }
+  const parent   = new Map([[startKey, null]])
+  const settled  = new Set()
+  const frames   = []
+  let pq = [{ r: startCell.r, c: startCell.c, cost: weights[startCell.r][startCell.c] }]
+  let peakFrontier = 1
+
+  const openKeys = () => new Set(pq.map(({ r, c }) => key(r, c)).filter(k => !settled.has(k)))
+  const snap = () => frames.push({ visited: new Set(settled), frontier: openKeys() })
+  snap()
+
+  while (pq.length) {
+    pq.sort((a, b) => a.cost - b.cost)
+    const { r, c, cost } = pq.shift()
+    const k = key(r, c)
+    if (settled.has(k)) continue
+    settled.add(k)
+    if (k === endKey) break
+
+    for (const { dr, dc, wall } of Object.values(DIRS)) {
+      if (cells[r][c][wall]) continue
+      const nr = r + dr, nc = c + dc
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue
+      const nk = key(nr, nc)
+      if (settled.has(nk)) continue
+      const newCost = cost + weights[nr][nc]
+      if (dist[nk] === undefined || newCost < dist[nk]) {
+        dist[nk] = newCost
+        parent.set(nk, k)
+        pq.push({ r: nr, c: nc, cost: newCost })
+      }
+    }
+
+    const openSize = pq.filter(e => !settled.has(key(e.r, e.c))).length
+    if (openSize > peakFrontier) peakFrontier = openSize
+    snap()
+  }
+
+  const path = new Set()
+  let totalCost = 0
   if (parent.has(endKey)) {
     let cur = endKey
     while (cur !== null) {
       path.add(cur)
+      const [pr, pc] = cur.split(',').map(Number)
+      totalCost += weights[pr][pc]
       cur = parent.get(cur) ?? null
     }
   }
 
-  return { frames, path, peakFrontier, nodesExpanded: visited.size }
+  return { frames, path, peakFrontier, nodesExpanded: settled.size, totalCost }
 }
 
 // ── Tutorial ──────────────────────────────────────────────────
@@ -136,24 +192,27 @@ function Tutorial({ onDismiss }) {
           <p className="mt-2 text-sm leading-relaxed text-blue-700">
             BFS explores every neighbour at the current distance before going further.
             It uses a <strong>queue</strong> (first-in, first-out) and is guaranteed to find
-            the <strong>shortest path</strong> in an unweighted maze. The search fans out
-            evenly from the start like a ripple on water.
+            the <strong>shortest path</strong> in an unweighted maze.
           </p>
         </div>
         <div className="rounded-xl border border-purple-100 bg-purple-50 p-5">
           <h2 className="font-semibold text-purple-800">Depth-First Search (DFS)</h2>
           <p className="mt-2 text-sm leading-relaxed text-purple-700">
-            DFS commits fully to one branch before backtracking and trying the next.
-            It uses a <strong>stack</strong> (last-in, first-out) and is memory-efficient,
-            but does <strong>not guarantee the shortest path</strong> — it tends to
-            snake deep into the maze before reversing.
+            DFS commits fully to one branch before backtracking. It uses a <strong>stack</strong>
+            (last-in, first-out) and does <strong>not guarantee the shortest path</strong>.
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-5">
+          <h2 className="font-semibold text-amber-800">Dijkstra's Algorithm</h2>
+          <p className="mt-2 text-sm leading-relaxed text-amber-700">
+            Dijkstra finds the <strong>lowest-cost path</strong> in a weighted graph. It always
+            expands the cell with the smallest cumulative cost so far — guaranteed optimal even
+            when terrain varies. Switch to Dijkstra to explore a terrain-cost maze.
           </p>
         </div>
         <p className="text-sm text-gray-500">
-          Click "Set Start" or "Set End" above the maze to choose custom start and end
-          cells. Drag the direction labels to control which neighbours each algorithm
-          explores first. Run the same maze with BFS then DFS to compare the search
-          shapes and path lengths.
+          Click "Set Start" or "Set End" to place custom endpoints. Drag direction labels
+          (BFS / DFS only) to control neighbour priority.
         </p>
       </div>
       <button
@@ -168,69 +227,65 @@ function Tutorial({ onDismiss }) {
 
 // ── Complexity Dashboard ──────────────────────────────────────
 
-function ComplexityDashboard({ stats }) {
-  const { nodesExpanded, peakFrontier, pathLength, time } = stats
+function ComplexityDashboard({ stats, isDijkstra }) {
+  const { nodesExpanded, peakFrontier, pathLength, totalCost, time } = stats
   const efficiencyPct = nodesExpanded > 0
-    ? Math.round((pathLength / nodesExpanded) * 100)
-    : 0
+    ? Math.round((pathLength / nodesExpanded) * 100) : 0
   const efficiencyLabel =
     efficiencyPct >= 50 ? 'Highly efficient' :
-    efficiencyPct >= 20 ? 'Moderately efficient' :
-                          'Exploration-heavy'
+    efficiencyPct >= 20 ? 'Moderately efficient' : 'Exploration-heavy'
   const efficiencyColor =
     efficiencyPct >= 50 ? 'text-green-600' :
-    efficiencyPct >= 20 ? 'text-yellow-600' :
-                          'text-orange-600'
+    efficiencyPct >= 20 ? 'text-yellow-600' : 'text-orange-600'
 
-  const cards = [
-    {
-      accent: 'border-blue-200 bg-blue-50',
-      icon: '⏱',
-      iconColor: 'text-blue-500',
-      title: 'Time Complexity',
-      main: `${nodesExpanded} nodes expanded`,
-      note: 'Theoretical: O(V + E) for both BFS and DFS',
-    },
-    {
-      accent: 'border-purple-200 bg-purple-50',
-      icon: '📦',
-      iconColor: 'text-purple-500',
-      title: 'Space Complexity',
-      main: `Peak frontier: ${peakFrontier}`,
-      note: 'Theoretical: O(V) worst case; BFS frontier tends to be larger on wide graphs',
-    },
-    {
-      accent: 'border-green-200 bg-green-50',
-      icon: '📐',
-      iconColor: 'text-green-500',
-      title: 'Path Efficiency',
-      main: `${pathLength} steps · ${efficiencyPct}%`,
-      note: null,
-      extra: <span className={`text-xs font-semibold ${efficiencyColor}`}>{efficiencyLabel}</span>,
-    },
-    {
-      accent: 'border-gray-200 bg-gray-50',
-      icon: '🕐',
-      iconColor: 'text-gray-500',
-      title: 'Wall-clock Time',
-      main: `${time} ms`,
-      note: 'Includes animation overhead — not a pure algorithm benchmark',
-    },
-  ]
+  const complexityNote = isDijkstra
+    ? 'Theoretical: O((V + E) log V) with a priority queue'
+    : 'Theoretical: O(V + E) for both BFS and DFS'
 
   return (
     <div className="mt-6 grid grid-cols-2 gap-3 max-w-xl">
-      {cards.map(({ accent, icon, iconColor, title, main, note, extra }) => (
-        <div key={title} className={`rounded-xl border-2 p-4 ${accent}`}>
-          <div className="flex items-center gap-2">
-            <span className={`text-lg ${iconColor}`}>{icon}</span>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
-          </div>
-          <p className="mt-2 text-sm font-bold text-gray-900">{main}</p>
-          {extra && <div className="mt-1">{extra}</div>}
-          {note && <p className="mt-1.5 text-xs leading-relaxed text-gray-400">{note}</p>}
+      <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg text-blue-500">⏱</span>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Time Complexity</p>
         </div>
-      ))}
+        <p className="mt-2 text-sm font-bold text-gray-900">{nodesExpanded} nodes expanded</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-gray-400">{complexityNote}</p>
+      </div>
+
+      <div className="rounded-xl border-2 border-purple-200 bg-purple-50 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg text-purple-500">📦</span>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Space Complexity</p>
+        </div>
+        <p className="mt-2 text-sm font-bold text-gray-900">Peak frontier: {peakFrontier}</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
+          Theoretical: O(V) worst case; BFS frontier tends to be larger on wide graphs
+        </p>
+      </div>
+
+      <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg text-green-500">📐</span>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Path Efficiency</p>
+        </div>
+        <p className="mt-2 text-sm font-bold text-gray-900">{pathLength} steps · {efficiencyPct}%</p>
+        {isDijkstra && totalCost != null && (
+          <p className="mt-0.5 text-sm font-semibold text-amber-700">Total path cost: {totalCost}</p>
+        )}
+        <span className={`text-xs font-semibold ${efficiencyColor}`}>{efficiencyLabel}</span>
+      </div>
+
+      <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg text-gray-500">🕐</span>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Wall-clock Time</p>
+        </div>
+        <p className="mt-2 text-sm font-bold text-gray-900">{time} ms</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
+          Includes animation overhead — not a pure algorithm benchmark
+        </p>
+      </div>
     </div>
   )
 }
@@ -239,50 +294,122 @@ function ComplexityDashboard({ stats }) {
 
 export default function SearchGame() {
   const [showTutorial, setShowTutorial] = useState(true)
-  const [cells, setCells]     = useState(generateMaze)
   const [algo, setAlgo]       = useState('BFS')
   const [dirOrder, setDirOrder] = useState(['Up', 'Right', 'Down', 'Left'])
   const [speed, setSpeed]     = useState(1)
+  const [placingMode, setPlacingMode] = useState(null)
 
-  const [startCell, setStartCell] = useState(DEFAULT_START)
-  const [endCell, setEndCell]     = useState(DEFAULT_END)
-  const [placingMode, setPlacingMode] = useState(null) // null | 'start' | 'end'
+  // ── Unweighted (BFS / DFS) state ─────────────────────────────
+  const [uwCells,    setUwCells]    = useState(generateMaze)
+  const [uwStart,    setUwStart]    = useState(DEFAULT_START)
+  const [uwEnd,      setUwEnd]      = useState(DEFAULT_END)
+  const [uwFrames,   setUwFrames]   = useState([])
+  const [uwPath,     setUwPath]     = useState(new Set())
+  const [uwFrameIdx, setUwFrameIdx] = useState(-1)
+  const [uwRunning,  setUwRunning]  = useState(false)
+  const [uwFinished, setUwFinished] = useState(false)
+  const [uwStats,    setUwStats]    = useState(null)
 
-  const [frames, setFrames]   = useState([])
-  const [path, setPath]       = useState(new Set())
-  const [frameIdx, setFrameIdx] = useState(-1)
-  const [running, setRunning] = useState(false)
-  const [finished, setFinished] = useState(false)
-  const [stats, setStats]     = useState(null)
+  // ── Dijkstra (weighted) state ─────────────────────────────────
+  const [dkCells,    setDkCells]    = useState(generateMaze)
+  const [dkWeights,  setDkWeights]  = useState(generateWeights)
+  const [dkStart,    setDkStart]    = useState(DEFAULT_START)
+  const [dkEnd,      setDkEnd]      = useState(DEFAULT_END)
+  const [dkFrames,   setDkFrames]   = useState([])
+  const [dkPath,     setDkPath]     = useState(new Set())
+  const [dkFrameIdx, setDkFrameIdx] = useState(-1)
+  const [dkRunning,  setDkRunning]  = useState(false)
+  const [dkFinished, setDkFinished] = useState(false)
+  const [dkStats,    setDkStats]    = useState(null)
 
   const intervalRef  = useRef(null)
   const startTimeRef = useRef(null)
   const dragFrom     = useRef(null)
 
+  // ── Active-mode aliases ───────────────────────────────────────
+  const isDijkstra = algo === 'Dijkstra'
+  const cells      = isDijkstra ? dkCells    : uwCells
+  const startCell  = isDijkstra ? dkStart    : uwStart
+  const endCell    = isDijkstra ? dkEnd      : uwEnd
+  const frames     = isDijkstra ? dkFrames   : uwFrames
+  const path       = isDijkstra ? dkPath     : uwPath
+  const frameIdx   = isDijkstra ? dkFrameIdx : uwFrameIdx
+  const running    = isDijkstra ? dkRunning  : uwRunning
+  const finished   = isDijkstra ? dkFinished : uwFinished
+  const stats      = isDijkstra ? dkStats    : uwStats
+
+  const setStartCell = isDijkstra ? setDkStart : setUwStart
+  const setEndCell   = isDijkstra ? setDkEnd   : setUwEnd
+
+  const startKey   = key(startCell.r, startCell.c)
+  const endKey     = key(endCell.r,   endCell.c)
+  const canRun     = !running && !finished && startKey !== endKey
+  const anyRunning = uwRunning || dkRunning
+
   const frame = frames[frameIdx] ?? { visited: new Set(), frontier: new Set() }
 
-  const startKey = key(startCell.r, startCell.c)
-  const endKey   = key(endCell.r,   endCell.c)
-  const canRun   = !running && !finished && startKey !== endKey
+  // ── Animation loops ───────────────────────────────────────────
 
-  // ── Cell colour ──────────────────────────────────────────────
+  useEffect(() => {
+    if (isDijkstra || !uwRunning) return
+    intervalRef.current = setInterval(() => {
+      setUwFrameIdx(i => {
+        if (i >= uwFrames.length - 1) {
+          clearInterval(intervalRef.current)
+          setUwRunning(false)
+          setUwFinished(true)
+          return i
+        }
+        return i + 1
+      })
+    }, SPEEDS[speed].ms)
+    return () => clearInterval(intervalRef.current)
+  }, [isDijkstra, uwRunning, uwFrames, speed])
+
+  useEffect(() => {
+    if (!isDijkstra || !dkRunning) return
+    intervalRef.current = setInterval(() => {
+      setDkFrameIdx(i => {
+        if (i >= dkFrames.length - 1) {
+          clearInterval(intervalRef.current)
+          setDkRunning(false)
+          setDkFinished(true)
+          return i
+        }
+        return i + 1
+      })
+    }, SPEEDS[speed].ms)
+    return () => clearInterval(intervalRef.current)
+  }, [isDijkstra, dkRunning, dkFrames, speed])
+
+  // Capture wall-clock time once each mode finishes
+  useEffect(() => {
+    if (uwFinished && uwStats && uwStats.time === null)
+      setUwStats(s => s ? { ...s, time: Math.round(performance.now() - startTimeRef.current) } : s)
+  }, [uwFinished])
+
+  useEffect(() => {
+    if (dkFinished && dkStats && dkStats.time === null)
+      setDkStats(s => s ? { ...s, time: Math.round(performance.now() - startTimeRef.current) } : s)
+  }, [dkFinished])
+
+  // ── Cell colour ───────────────────────────────────────────────
 
   const cellBg = (r, c) => {
     const k = key(r, c)
-    if (k === startKey) return '#22c55e'           // start: green-500
-    if (k === endKey)   return '#ef4444'           // end: red-500
-    if (finished && path.has(k)) return '#86efac' // path: green-300
-    if (frame.frontier.has(k))   return '#fde047' // frontier: yellow-300
-    if (frame.visited.has(k))    return '#bfdbfe' // visited: blue-200
+    if (k === startKey) return '#22c55e'
+    if (k === endKey)   return '#ef4444'
+    if (finished && path.has(k)) return '#86efac'
+    if (frame.frontier.has(k))   return '#fde047'
+    if (frame.visited.has(k))    return '#bfdbfe'
+    if (isDijkstra)              return TERRAIN[dkWeights[r][c]].color
     return '#ffffff'
   }
 
-  // Render top+left borders per cell; right/bottom only on outer edge.
-  // Each wall is drawn exactly once — no doubled borders.
   const cellStyle = (r, c, cell) => ({
-    width: 32,
-    height: 32,
+    width: 32, height: 32,
     boxSizing: 'border-box',
+    position: 'relative',
     backgroundColor: cellBg(r, c),
     borderStyle: 'solid',
     borderColor: '#374151',
@@ -293,92 +420,66 @@ export default function SearchGame() {
     cursor: placingMode ? 'crosshair' : 'default',
   })
 
-  // ── Animation loop ───────────────────────────────────────────
-
-  useEffect(() => {
-    if (!running) return
-    intervalRef.current = setInterval(() => {
-      setFrameIdx(i => {
-        if (i >= frames.length - 1) {
-          clearInterval(intervalRef.current)
-          setRunning(false)
-          setFinished(true)
-          return i
-        }
-        return i + 1
-      })
-    }, SPEEDS[speed].ms)
-    return () => clearInterval(intervalRef.current)
-  }, [running, frames, speed])
-
   // ── Handlers ─────────────────────────────────────────────────
+
+  const handleAlgoChange = (newAlgo) => {
+    if (anyRunning) return
+    setAlgo(newAlgo)
+    setPlacingMode(null)
+  }
 
   const handleCellClick = (r, c) => {
     if (!placingMode || running || finished) return
-    if (placingMode === 'start') {
-      setStartCell({ r, c })
-      setPlacingMode(null)
-    } else {
-      setEndCell({ r, c })
-      setPlacingMode(null)
-    }
+    if (placingMode === 'start') setStartCell({ r, c })
+    else setEndCell({ r, c })
+    setPlacingMode(null)
   }
 
   const handleStart = () => {
     if (!canRun) return
-    const result = traceAlgorithm(cells, algo, dirOrder, startCell, endCell)
-    setFrames(result.frames)
-    setPath(result.path)
-    setFrameIdx(0)
-    setStats({
-      nodesExpanded: result.nodesExpanded,
-      peakFrontier:  result.peakFrontier,
-      pathLength:    result.path.size,
-      time: null,    // filled when animation ends
-    })
     startTimeRef.current = performance.now()
-    setRunning(true)
-
-    // Capture elapsed time when animation finishes via a one-shot check
-    const pathSize    = result.path.size
-    const expanded    = result.nodesExpanded
-    const peakF       = result.peakFrontier
-    const totalFrames = result.frames.length
-    // Store refs so the interval callback can set final time
-    startTimeRef._meta = { pathSize, expanded, peakF, totalFrames }
-  }
-
-  // Set wall-clock time once animation finishes
-  useEffect(() => {
-    if (finished && stats && stats.time === null) {
-      setStats(s => ({
-        ...s,
-        time: Math.round(performance.now() - startTimeRef.current),
-      }))
+    if (isDijkstra) {
+      const result = traceDijkstra(dkCells, dkWeights, dkStart, dkEnd)
+      setDkFrames(result.frames)
+      setDkPath(result.path)
+      setDkFrameIdx(0)
+      setDkStats({ nodesExpanded: result.nodesExpanded, peakFrontier: result.peakFrontier, pathLength: result.path.size, totalCost: result.totalCost, time: null })
+      setDkRunning(true)
+    } else {
+      const result = traceSearchAlgorithm(uwCells, algo, dirOrder, uwStart, uwEnd)
+      setUwFrames(result.frames)
+      setUwPath(result.path)
+      setUwFrameIdx(0)
+      setUwStats({ nodesExpanded: result.nodesExpanded, peakFrontier: result.peakFrontier, pathLength: result.path.size, totalCost: null, time: null })
+      setUwRunning(true)
     }
-  }, [finished])
+  }
 
   const handleReset = () => {
     clearInterval(intervalRef.current)
-    setRunning(false)
-    setFinished(false)
-    setFrameIdx(-1)
-    setFrames([])
-    setPath(new Set())
-    setStats(null)
     setPlacingMode(null)
+    if (isDijkstra) {
+      setDkRunning(false); setDkFinished(false)
+      setDkFrameIdx(-1); setDkFrames([]); setDkPath(new Set()); setDkStats(null)
+    } else {
+      setUwRunning(false); setUwFinished(false)
+      setUwFrameIdx(-1); setUwFrames([]); setUwPath(new Set()); setUwStats(null)
+    }
   }
 
   const handleNewMaze = () => {
     handleReset()
-    setCells(generateMaze())
-    setStartCell(DEFAULT_START)
-    setEndCell(DEFAULT_END)
+    if (isDijkstra) {
+      setDkCells(generateMaze()); setDkWeights(generateWeights())
+      setDkStart(DEFAULT_START); setDkEnd(DEFAULT_END)
+    } else {
+      setUwCells(generateMaze())
+      setUwStart(DEFAULT_START); setUwEnd(DEFAULT_END)
+    }
   }
 
-  // Drag-to-reorder direction priority
   const onDragStart = (i) => { dragFrom.current = i }
-  const onDragOver = (e, i) => {
+  const onDragOver  = (e, i) => {
     e.preventDefault()
     if (dragFrom.current === null || dragFrom.current === i) return
     const from = dragFrom.current
@@ -407,14 +508,13 @@ export default function SearchGame() {
         <div>
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Algorithm</p>
           <div className="flex overflow-hidden rounded-lg border border-gray-200">
-            {['BFS', 'DFS'].map(a => (
+            {['BFS', 'DFS', 'Dijkstra'].map(a => (
               <button
                 key={a}
-                onClick={() => !running && setAlgo(a)}
-                className={`px-5 py-2 text-sm font-medium transition-colors ${
-                  algo === a
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                onClick={() => handleAlgoChange(a)}
+                disabled={anyRunning}
+                className={`px-5 py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
+                  algo === a ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 {a}
@@ -423,27 +523,35 @@ export default function SearchGame() {
           </div>
         </div>
 
-        {/* Direction priority */}
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-            Direction Priority{' '}
-            <span className="normal-case font-normal">(drag to reorder)</span>
-          </p>
-          <div className="flex gap-2">
-            {dirOrder.map((dir, i) => (
-              <div
-                key={dir}
-                draggable
-                onDragStart={() => onDragStart(i)}
-                onDragOver={e => onDragOver(e, i)}
-                onDragEnd={onDragEnd}
-                className="cursor-grab select-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 active:cursor-grabbing transition-colors"
-              >
-                {dir}
-              </div>
-            ))}
+        {/* Direction priority — hidden for Dijkstra */}
+        {!isDijkstra ? (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+              Direction Priority <span className="normal-case font-normal">(drag to reorder)</span>
+            </p>
+            <div className="flex gap-2">
+              {dirOrder.map((dir, i) => (
+                <div
+                  key={dir}
+                  draggable
+                  onDragStart={() => onDragStart(i)}
+                  onDragOver={e => onDragOver(e, i)}
+                  onDragEnd={onDragEnd}
+                  className="cursor-grab select-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 active:cursor-grabbing transition-colors"
+                >
+                  {dir}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Direction Priority</p>
+            <p className="text-xs italic text-gray-400 max-w-56">
+              Dijkstra picks the lowest-cost cell next, not based on direction order
+            </p>
+          </div>
+        )}
 
         {/* Speed slider */}
         <div>
@@ -451,10 +559,7 @@ export default function SearchGame() {
             Speed — <span className="normal-case font-normal">{SPEEDS[speed].label}</span>
           </p>
           <input
-            type="range"
-            min={0}
-            max={SPEEDS.length - 1}
-            value={speed}
+            type="range" min={0} max={SPEEDS.length - 1} value={speed}
             onChange={e => setSpeed(Number(e.target.value))}
             className="w-32 accent-blue-600"
           />
@@ -462,25 +567,16 @@ export default function SearchGame() {
 
         {/* Action buttons */}
         <div className="ml-auto flex gap-2">
-          <button
-            onClick={handleNewMaze}
-            disabled={running}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
+          <button onClick={handleNewMaze} disabled={anyRunning}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
             New Maze
           </button>
-          <button
-            onClick={handleStart}
-            disabled={!canRun}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
-          >
+          <button onClick={handleStart} disabled={!canRun}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
             Start
           </button>
-          <button
-            onClick={handleReset}
-            disabled={frameIdx === -1}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
+          <button onClick={handleReset} disabled={frameIdx === -1}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
             Reset
           </button>
         </div>
@@ -490,23 +586,21 @@ export default function SearchGame() {
       <div className="mt-4 flex items-center gap-3">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Place:</p>
         {[
-          { mode: 'start', label: 'Set Start', active: 'bg-green-600 text-white', inactive: 'border border-green-300 text-green-700 hover:bg-green-50' },
-          { mode: 'end',   label: 'Set End',   active: 'bg-red-500 text-white',   inactive: 'border border-red-300 text-red-600 hover:bg-red-50' },
+          { mode: 'start', label: 'Set Start', active: 'bg-green-600 text-white',   inactive: 'border border-green-300 text-green-700 hover:bg-green-50' },
+          { mode: 'end',   label: 'Set End',   active: 'bg-red-500 text-white',     inactive: 'border border-red-300 text-red-600 hover:bg-red-50' },
         ].map(({ mode, label, active, inactive }) => (
           <button
             key={mode}
             disabled={running || finished}
             onClick={() => setPlacingMode(p => p === mode ? null : mode)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${
-              placingMode === mode ? active : inactive
-            }`}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${placingMode === mode ? active : inactive}`}
           >
             {label}
           </button>
         ))}
         {placingMode && (
-          <p className="text-xs text-gray-400 italic">
-            Click any cell on the maze to place the {placingMode} point
+          <p className="text-xs italic text-gray-400">
+            Click any cell to place the {placingMode} point
           </p>
         )}
       </div>
@@ -519,6 +613,10 @@ export default function SearchGame() {
           ['#bfdbfe', 'Visited'],
           ['#fde047', 'Frontier'],
           ['#86efac', 'Path'],
+          ...(isDijkstra
+            ? Object.entries(TERRAIN).map(([cost, { label, color }]) => [color, `${label} (cost ${cost})`])
+            : []
+          ),
         ].map(([bg, label]) => (
           <span key={label} className="flex items-center gap-1.5">
             <span style={{ backgroundColor: bg }} className="inline-block h-3 w-3 rounded-sm border border-gray-200" />
@@ -531,20 +629,32 @@ export default function SearchGame() {
       <div className="mt-3 inline-block select-none">
         {cells.map((row, r) => (
           <div key={r} style={{ display: 'flex' }}>
-            {row.map((cell, c) => (
-              <div
-                key={c}
-                style={cellStyle(r, c, cell)}
-                onClick={() => handleCellClick(r, c)}
-              />
-            ))}
+            {row.map((cell, c) => {
+              const k = key(r, c)
+              const isMarked = k === startKey || k === endKey ||
+                (finished && path.has(k)) || frame.frontier.has(k) || frame.visited.has(k)
+              return (
+                <div key={c} style={cellStyle(r, c, cell)} onClick={() => handleCellClick(r, c)}>
+                  {isDijkstra && (
+                    <span style={{
+                      position: 'absolute', bottom: 1, right: 2,
+                      fontSize: 7, lineHeight: 1,
+                      pointerEvents: 'none', userSelect: 'none',
+                      color: isMarked ? 'rgba(0,0,0,0.2)' : '#9ca3af',
+                    }}>
+                      {dkWeights[r][c]}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ))}
       </div>
 
-      {/* ── Complexity Dashboard (shown after algorithm finishes) ── */}
+      {/* ── Complexity Dashboard ── */}
       {stats && stats.time !== null && (
-        <ComplexityDashboard stats={stats} />
+        <ComplexityDashboard stats={stats} isDijkstra={isDijkstra} />
       )}
     </div>
   )
