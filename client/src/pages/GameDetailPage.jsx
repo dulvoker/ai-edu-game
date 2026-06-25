@@ -2,10 +2,12 @@ import { useParams } from 'react-router-dom'
 import { games } from '../data/content'
 import SearchGame from '../games/SearchGame'
 import DecisionTreeGame from '../games/DecisionTreeGame'
+import TreeTraversalGame from '../games/TreeTraversalGame'
 
 const GAME_COMPONENTS = {
   search: SearchGame,
   'decision-tree': DecisionTreeGame,
+  'tree-traversal': TreeTraversalGame,
 }
 
 export default function GameDetailPage() {

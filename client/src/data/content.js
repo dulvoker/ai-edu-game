@@ -10,6 +10,11 @@ export const games = [
     description: 'Build decision trees to classify creatures by their features',
   },
   {
+    id: 'tree-traversal',
+    title: 'Tree Traversals',
+    description: 'Predict the order of Inorder, Preorder, and Postorder traversal',
+  },
+  {
     id: 'neural-network',
     title: 'Neural Networks',
     description: 'Tune weights in a visual neural network to recognise patterns',
