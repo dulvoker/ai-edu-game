@@ -84,8 +84,8 @@ function gatherEdges(root) {
   const out = []
   function dfs(n) {
     if (!n) return
-    if (n.left)  { out.push([n, n.left]);  dfs(n.left)  }
-    if (n.right) { out.push([n, n.right]); dfs(n.right) }
+    if (n.left)  { out.push({ p: n, c: n.left,  side: 'L' }); dfs(n.left)  }
+    if (n.right) { out.push({ p: n, c: n.right, side: 'R' }); dfs(n.right) }
   }
   dfs(root)
   return out
@@ -299,13 +299,28 @@ export default function TreeTraversalGame() {
           style={{ overflow: 'visible' }}
         >
           {/* Draw edges beneath nodes */}
-          {edges.map(([p, c], i) => (
-            <line
-              key={i}
-              x1={p.x} y1={p.y} x2={c.x} y2={c.y}
-              stroke="#d1d5db" strokeWidth={2}
-            />
-          ))}
+          {edges.map(({ p, c, side }, i) => {
+            // Show L/R label only when the parent has a single child (otherwise L/R is visually obvious)
+            const singleChild = !p.left || !p.right
+            const midX = (p.x + c.x) / 2
+            const midY = (p.y + c.y) / 2
+            return (
+              <g key={i}>
+                <line x1={p.x} y1={p.y} x2={c.x} y2={c.y} stroke="#d1d5db" strokeWidth={2} />
+                {singleChild && (
+                  <text
+                    x={midX + (side === 'L' ? -10 : 10)}
+                    y={midY}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={10} fontWeight={700} fill="#9ca3af"
+                    style={{ userSelect: 'none' }}
+                  >
+                    {side}
+                  </text>
+                )}
+              </g>
+            )
+          })}
 
           {/* Draw nodes */}
           {nodes.map(node => {
