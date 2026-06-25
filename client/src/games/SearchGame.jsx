@@ -19,7 +19,9 @@ const DIRS = {
 }
 
 const key = (r, c) => `${r},${c}`
-const END = key(ROWS - 1, COLS - 1)
+
+const DEFAULT_START = { r: 0,         c: 0         }
+const DEFAULT_END   = { r: ROWS - 1,  c: COLS - 1  }
 
 // ── Maze generation (Recursive Backtracking) ──────────────────
 
@@ -66,19 +68,22 @@ function generateMaze() {
 }
 
 // ── Algorithm trace ───────────────────────────────────────────
-// Pre-computes every animation frame and the final path.
+// Pre-computes every animation frame, the final path, and peak frontier size.
 // For DFS, directions are pushed in reverse so dirOrder[0] is explored first.
 
-function traceAlgorithm(cells, algo, dirOrder) {
-  const start = key(0, 0)
-  const visited = new Set([start])
-  const parent = new Map([[start, null]])
-  const frames = []
-  let ds = [{ r: 0, c: 0 }]
+function traceAlgorithm(cells, algo, dirOrder, startCell, endCell) {
+  const startKey = key(startCell.r, startCell.c)
+  const endKey   = key(endCell.r,   endCell.c)
+
+  const visited = new Set([startKey])
+  const parent  = new Map([[startKey, null]])
+  const frames  = []
+  let ds = [{ r: startCell.r, c: startCell.c }]
+  let peakFrontier = 1
 
   const snap = () =>
     frames.push({
-      visited: new Set(visited),
+      visited:  new Set(visited),
       frontier: new Set(ds.map(({ r, c }) => key(r, c))),
     })
 
@@ -89,11 +94,11 @@ function traceAlgorithm(cells, algo, dirOrder) {
 
   while (ds.length) {
     const { r, c } = algo === 'BFS' ? ds.shift() : ds.pop()
-    if (key(r, c) === END) break
+    if (key(r, c) === endKey) break
 
     for (const d of exploreOrder) {
       const { dr, dc, wall } = DIRS[d]
-      if (cells[r][c][wall]) continue       // wall present, can't cross
+      if (cells[r][c][wall]) continue
       const nr = r + dr, nc = c + dc
       const nk = key(nr, nc)
       if (visited.has(nk)) continue
@@ -101,20 +106,22 @@ function traceAlgorithm(cells, algo, dirOrder) {
       parent.set(nk, key(r, c))
       ds.push({ r: nr, c: nc })
     }
+
+    if (ds.length > peakFrontier) peakFrontier = ds.length
     snap()
   }
 
   // Reconstruct path end → start
   const path = new Set()
-  if (parent.has(END)) {
-    let cur = END
+  if (parent.has(endKey)) {
+    let cur = endKey
     while (cur !== null) {
       path.add(cur)
       cur = parent.get(cur) ?? null
     }
   }
 
-  return { frames, path }
+  return { frames, path, peakFrontier, nodesExpanded: visited.size }
 }
 
 // ── Tutorial ──────────────────────────────────────────────────
@@ -143,9 +150,10 @@ function Tutorial({ onDismiss }) {
           </p>
         </div>
         <p className="text-sm text-gray-500">
-          Drag the direction labels to control which neighbours each algorithm
-          explores first. Run the same maze with BFS then DFS to compare the
-          search shapes and path lengths.
+          Click "Set Start" or "Set End" above the maze to choose custom start and end
+          cells. Drag the direction labels to control which neighbours each algorithm
+          explores first. Run the same maze with BFS then DFS to compare the search
+          shapes and path lengths.
         </p>
       </div>
       <button
@@ -158,38 +166,114 @@ function Tutorial({ onDismiss }) {
   )
 }
 
+// ── Complexity Dashboard ──────────────────────────────────────
+
+function ComplexityDashboard({ stats }) {
+  const { nodesExpanded, peakFrontier, pathLength, time } = stats
+  const efficiencyPct = nodesExpanded > 0
+    ? Math.round((pathLength / nodesExpanded) * 100)
+    : 0
+  const efficiencyLabel =
+    efficiencyPct >= 50 ? 'Highly efficient' :
+    efficiencyPct >= 20 ? 'Moderately efficient' :
+                          'Exploration-heavy'
+  const efficiencyColor =
+    efficiencyPct >= 50 ? 'text-green-600' :
+    efficiencyPct >= 20 ? 'text-yellow-600' :
+                          'text-orange-600'
+
+  const cards = [
+    {
+      accent: 'border-blue-200 bg-blue-50',
+      icon: '⏱',
+      iconColor: 'text-blue-500',
+      title: 'Time Complexity',
+      main: `${nodesExpanded} nodes expanded`,
+      note: 'Theoretical: O(V + E) for both BFS and DFS',
+    },
+    {
+      accent: 'border-purple-200 bg-purple-50',
+      icon: '📦',
+      iconColor: 'text-purple-500',
+      title: 'Space Complexity',
+      main: `Peak frontier: ${peakFrontier}`,
+      note: 'Theoretical: O(V) worst case; BFS frontier tends to be larger on wide graphs',
+    },
+    {
+      accent: 'border-green-200 bg-green-50',
+      icon: '📐',
+      iconColor: 'text-green-500',
+      title: 'Path Efficiency',
+      main: `${pathLength} steps · ${efficiencyPct}%`,
+      note: null,
+      extra: <span className={`text-xs font-semibold ${efficiencyColor}`}>{efficiencyLabel}</span>,
+    },
+    {
+      accent: 'border-gray-200 bg-gray-50',
+      icon: '🕐',
+      iconColor: 'text-gray-500',
+      title: 'Wall-clock Time',
+      main: `${time} ms`,
+      note: 'Includes animation overhead — not a pure algorithm benchmark',
+    },
+  ]
+
+  return (
+    <div className="mt-6 grid grid-cols-2 gap-3 max-w-xl">
+      {cards.map(({ accent, icon, iconColor, title, main, note, extra }) => (
+        <div key={title} className={`rounded-xl border-2 p-4 ${accent}`}>
+          <div className="flex items-center gap-2">
+            <span className={`text-lg ${iconColor}`}>{icon}</span>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+          </div>
+          <p className="mt-2 text-sm font-bold text-gray-900">{main}</p>
+          {extra && <div className="mt-1">{extra}</div>}
+          {note && <p className="mt-1.5 text-xs leading-relaxed text-gray-400">{note}</p>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────
 
 export default function SearchGame() {
   const [showTutorial, setShowTutorial] = useState(true)
-  const [cells, setCells] = useState(generateMaze)
-  const [algo, setAlgo] = useState('BFS')
+  const [cells, setCells]     = useState(generateMaze)
+  const [algo, setAlgo]       = useState('BFS')
   const [dirOrder, setDirOrder] = useState(['Up', 'Right', 'Down', 'Left'])
+  const [speed, setSpeed]     = useState(1)
 
-  const [speed, setSpeed] = useState(1)        // index into SPEEDS; 1 = Normal
+  const [startCell, setStartCell] = useState(DEFAULT_START)
+  const [endCell, setEndCell]     = useState(DEFAULT_END)
+  const [placingMode, setPlacingMode] = useState(null) // null | 'start' | 'end'
 
-  const [frames, setFrames] = useState([])
-  const [path, setPath] = useState(new Set())
+  const [frames, setFrames]   = useState([])
+  const [path, setPath]       = useState(new Set())
   const [frameIdx, setFrameIdx] = useState(-1)
   const [running, setRunning] = useState(false)
   const [finished, setFinished] = useState(false)
-  const [stats, setStats] = useState(null)
+  const [stats, setStats]     = useState(null)
 
-  const intervalRef = useRef(null)
+  const intervalRef  = useRef(null)
   const startTimeRef = useRef(null)
-  const dragFrom = useRef(null)
+  const dragFrom     = useRef(null)
 
   const frame = frames[frameIdx] ?? { visited: new Set(), frontier: new Set() }
+
+  const startKey = key(startCell.r, startCell.c)
+  const endKey   = key(endCell.r,   endCell.c)
+  const canRun   = !running && !finished && startKey !== endKey
 
   // ── Cell colour ──────────────────────────────────────────────
 
   const cellBg = (r, c) => {
-    if (r === 0 && c === 0) return '#22c55e'           // start: green-500
-    if (r === ROWS - 1 && c === COLS - 1) return '#ef4444'  // end: red-500
     const k = key(r, c)
-    if (finished && path.has(k)) return '#86efac'      // path: green-300
-    if (frame.frontier.has(k)) return '#fde047'        // frontier: yellow-300
-    if (frame.visited.has(k)) return '#bfdbfe'         // visited: blue-200
+    if (k === startKey) return '#22c55e'           // start: green-500
+    if (k === endKey)   return '#ef4444'           // end: red-500
+    if (finished && path.has(k)) return '#86efac' // path: green-300
+    if (frame.frontier.has(k))   return '#fde047' // frontier: yellow-300
+    if (frame.visited.has(k))    return '#bfdbfe' // visited: blue-200
     return '#ffffff'
   }
 
@@ -202,10 +286,11 @@ export default function SearchGame() {
     backgroundColor: cellBg(r, c),
     borderStyle: 'solid',
     borderColor: '#374151',
-    borderTopWidth: cell.top ? 2 : 0,
-    borderLeftWidth: cell.left ? 2 : 0,
-    borderRightWidth: c === COLS - 1 && cell.right ? 2 : 0,
+    borderTopWidth:    cell.top    ? 2 : 0,
+    borderLeftWidth:   cell.left   ? 2 : 0,
+    borderRightWidth:  c === COLS - 1 && cell.right  ? 2 : 0,
     borderBottomWidth: r === ROWS - 1 && cell.bottom ? 2 : 0,
+    cursor: placingMode ? 'crosshair' : 'default',
   })
 
   // ── Animation loop ───────────────────────────────────────────
@@ -218,31 +303,60 @@ export default function SearchGame() {
           clearInterval(intervalRef.current)
           setRunning(false)
           setFinished(true)
-          setStats({
-            visited: frames[frames.length - 1]?.visited.size ?? 0,
-            pathLength: path.size,
-            time: Math.round(performance.now() - startTimeRef.current),
-          })
           return i
         }
         return i + 1
       })
     }, SPEEDS[speed].ms)
     return () => clearInterval(intervalRef.current)
-  }, [running, frames, path, speed])
+  }, [running, frames, speed])
 
   // ── Handlers ─────────────────────────────────────────────────
 
+  const handleCellClick = (r, c) => {
+    if (!placingMode || running || finished) return
+    if (placingMode === 'start') {
+      setStartCell({ r, c })
+      setPlacingMode(null)
+    } else {
+      setEndCell({ r, c })
+      setPlacingMode(null)
+    }
+  }
+
   const handleStart = () => {
-    if (running || finished) return
-    const result = traceAlgorithm(cells, algo, dirOrder)
+    if (!canRun) return
+    const result = traceAlgorithm(cells, algo, dirOrder, startCell, endCell)
     setFrames(result.frames)
     setPath(result.path)
     setFrameIdx(0)
-    setStats(null)
+    setStats({
+      nodesExpanded: result.nodesExpanded,
+      peakFrontier:  result.peakFrontier,
+      pathLength:    result.path.size,
+      time: null,    // filled when animation ends
+    })
     startTimeRef.current = performance.now()
     setRunning(true)
+
+    // Capture elapsed time when animation finishes via a one-shot check
+    const pathSize    = result.path.size
+    const expanded    = result.nodesExpanded
+    const peakF       = result.peakFrontier
+    const totalFrames = result.frames.length
+    // Store refs so the interval callback can set final time
+    startTimeRef._meta = { pathSize, expanded, peakF, totalFrames }
   }
+
+  // Set wall-clock time once animation finishes
+  useEffect(() => {
+    if (finished && stats && stats.time === null) {
+      setStats(s => ({
+        ...s,
+        time: Math.round(performance.now() - startTimeRef.current),
+      }))
+    }
+  }, [finished])
 
   const handleReset = () => {
     clearInterval(intervalRef.current)
@@ -252,11 +366,14 @@ export default function SearchGame() {
     setFrames([])
     setPath(new Set())
     setStats(null)
+    setPlacingMode(null)
   }
 
   const handleNewMaze = () => {
     handleReset()
     setCells(generateMaze())
+    setStartCell(DEFAULT_START)
+    setEndCell(DEFAULT_END)
   }
 
   // Drag-to-reorder direction priority
@@ -354,7 +471,7 @@ export default function SearchGame() {
           </button>
           <button
             onClick={handleStart}
-            disabled={running || finished}
+            disabled={!canRun}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
             Start
@@ -369,8 +486,33 @@ export default function SearchGame() {
         </div>
       </div>
 
+      {/* ── Set Start / Set End ── */}
+      <div className="mt-4 flex items-center gap-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Place:</p>
+        {[
+          { mode: 'start', label: 'Set Start', active: 'bg-green-600 text-white', inactive: 'border border-green-300 text-green-700 hover:bg-green-50' },
+          { mode: 'end',   label: 'Set End',   active: 'bg-red-500 text-white',   inactive: 'border border-red-300 text-red-600 hover:bg-red-50' },
+        ].map(({ mode, label, active, inactive }) => (
+          <button
+            key={mode}
+            disabled={running || finished}
+            onClick={() => setPlacingMode(p => p === mode ? null : mode)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${
+              placingMode === mode ? active : inactive
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        {placingMode && (
+          <p className="text-xs text-gray-400 italic">
+            Click any cell on the maze to place the {placingMode} point
+          </p>
+        )}
+      </div>
+
       {/* ── Legend ── */}
-      <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-500">
+      <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
         {[
           ['#22c55e', 'Start'],
           ['#ef4444', 'End'],
@@ -386,30 +528,23 @@ export default function SearchGame() {
       </div>
 
       {/* ── Maze ── */}
-      <div className="mt-4 inline-block">
+      <div className="mt-3 inline-block select-none">
         {cells.map((row, r) => (
           <div key={r} style={{ display: 'flex' }}>
             {row.map((cell, c) => (
-              <div key={c} style={cellStyle(r, c, cell)} />
+              <div
+                key={c}
+                style={cellStyle(r, c, cell)}
+                onClick={() => handleCellClick(r, c)}
+              />
             ))}
           </div>
         ))}
       </div>
 
-      {/* ── Stats (shown after algorithm finishes) ── */}
-      {stats && (
-        <div className="mt-6 flex flex-wrap gap-8">
-          {[
-            { label: 'Cells Visited', value: stats.visited },
-            { label: 'Path Length', value: stats.pathLength },
-            { label: 'Time', value: `${stats.time} ms` },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-2xl font-bold text-gray-900">{value}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{label}</p>
-            </div>
-          ))}
-        </div>
+      {/* ── Complexity Dashboard (shown after algorithm finishes) ── */}
+      {stats && stats.time !== null && (
+        <ComplexityDashboard stats={stats} />
       )}
     </div>
   )
