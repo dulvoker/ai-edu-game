@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 
 // ── Constants ─────────────────────────────────────────────────
 
-const ROWS = 15
-const COLS = 15
+const ROWS = 6
+const COLS = 6
 
 const SPEEDS = [
   { label: 'Slow',   ms: 200 },
@@ -215,11 +215,14 @@ function initTestState(algo, cells, weights, startCell) {
 
 function getNextCell(ts, algo) {
   if (!ts || ts.done) return null
+  // Guard against stale state from previous algo (effect hasn't reinit yet)
   if (algo === 'Dijkstra') {
+    if (!ts.pq || !ts.settled) return null
     const open = ts.pq.filter(e => !ts.settled.has(key(e.r, e.c)))
     if (!open.length) return null
     return open.reduce((m, e) => e.cost < m.cost ? e : m)
   }
+  if (!ts.ds) return null
   if (algo === 'BFS') return ts.ds[0] ?? null
   return ts.ds[ts.ds.length - 1] ?? null  // DFS: top of stack
 }
@@ -390,15 +393,15 @@ function FrontierPanel({ ts, algo, isDijkstra }) {
 
   let items = []
   if (isDijkstra) {
+    if (!ts.pq || !ts.settled) return null  // guard stale state
     const seen = new Set()
     items = ts.pq
       .filter(e => !ts.settled.has(key(e.r, e.c)))
       .sort((a, b) => a.cost - b.cost)
       .filter(e => { const k = key(e.r, e.c); if (seen.has(k)) return false; seen.add(k); return true })
-  } else if (algo === 'BFS') {
-    items = ts.ds
   } else {
-    items = [...ts.ds].reverse()
+    if (!ts.ds) return null  // guard stale state
+    items = algo === 'BFS' ? ts.ds : [...ts.ds].reverse()
   }
 
   const label = isDijkstra ? 'Priority Queue' : algo === 'BFS' ? 'Queue' : 'Stack'
@@ -584,12 +587,15 @@ export default function SearchGame() {
     if (k === endKey)   return '#ef4444'
     if (testState?.done && testPath?.has(k)) return '#86efac'
     if (!testState) return isDijkstra ? TERRAIN[dkWeights[r][c]].color : '#ffffff'
+    // Guard: testState may still hold prior-algo shape between algo switch and effect reinit
     if (isDijkstra) {
+      if (!testState.settled || !testState.pq) return TERRAIN[dkWeights[r][c]].color
       if (testState.settled.has(k)) return '#bfdbfe'
       const inPq = testState.pq.some(e => key(e.r, e.c) === k) && !testState.settled.has(k)
       if (inPq) return '#fde047'
       return TERRAIN[dkWeights[r][c]].color
     }
+    if (!testState.ds || !testState.discovered) return '#ffffff'
     const inDs = testState.ds.some(e => key(e.r, e.c) === k)
     if (inDs) return '#fde047'
     if (testState.discovered.has(k)) return '#bfdbfe'
@@ -601,7 +607,7 @@ export default function SearchGame() {
   const cellStyle = (r, c, cell) => {
     const isHint = testState?.showHint && nextCell && key(r, c) === key(nextCell.r, nextCell.c)
     return {
-      width: 32, height: 32,
+      width: 56, height: 56,
       boxSizing: 'border-box',
       position: 'relative',
       backgroundColor: cellBg(r, c),
@@ -888,7 +894,7 @@ export default function SearchGame() {
                     {isDijkstra && (
                       <span style={{
                         position: 'absolute', bottom: 1, right: 2,
-                        fontSize: 7, lineHeight: 1,
+                        fontSize: 11, lineHeight: 1,
                         pointerEvents: 'none', userSelect: 'none',
                         color: isMarked ? 'rgba(0,0,0,0.2)' : '#9ca3af',
                       }}>
