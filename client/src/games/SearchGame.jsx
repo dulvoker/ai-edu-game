@@ -29,6 +29,30 @@ const TERRAIN = {
   5: { label: 'Mountain', color: '#fed7aa' },
 }
 
+const ALGO_INFO = {
+  BFS: {
+    chips: [
+      { label: 'Queue',         sub: 'FIFO',           bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+      { label: 'Shortest path', sub: 'unweighted graph', bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+      { label: 'O(V + E)',      sub: 'time complexity', bg: '#f9fafb', border: '#e5e7eb', text: '#374151' },
+    ],
+  },
+  DFS: {
+    chips: [
+      { label: 'Stack',          sub: 'LIFO',          bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' },
+      { label: 'No guarantee',   sub: 'path length',   bg: '#fef2f2', border: '#fecaca', text: '#dc2626' },
+      { label: 'O(V + E)',       sub: 'time complexity',bg: '#f9fafb', border: '#e5e7eb', text: '#374151' },
+    ],
+  },
+  Dijkstra: {
+    chips: [
+      { label: 'Priority Queue', sub: 'min cost first',    bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' },
+      { label: 'Lowest-cost path', sub: 'weighted graph',  bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+      { label: 'O((V+E) log V)', sub: 'time complexity',  bg: '#f9fafb', border: '#e5e7eb', text: '#374151' },
+    ],
+  },
+}
+
 // ── Maze generation ───────────────────────────────────────────
 
 function generateMaze() {
@@ -812,27 +836,40 @@ export default function SearchGame() {
         {gameMode === 'vis' ? 'Step 1 — Watch the algorithm' : 'Step 2 — Test yourself'}
       </p>
 
-      {/* ── Controls row ── */}
-      <div className="mt-4 flex flex-wrap items-end gap-6">
-
-        {/* Algorithm toggle */}
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Algorithm</p>
-          <div className="flex overflow-hidden rounded-lg border border-gray-200">
-            {['BFS', 'DFS', 'Dijkstra'].map(a => (
-              <button
-                key={a}
-                onClick={() => handleAlgoChange(a)}
-                disabled={anyRunning}
-                className={`px-5 py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
-                  algo === a ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {a}
-              </button>
-            ))}
-          </div>
+      {/* ── Algorithm selector + info bar ── */}
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Algorithm</p>
+        <div className="flex overflow-hidden rounded-lg border border-gray-200 w-fit">
+          {['BFS', 'DFS', 'Dijkstra'].map(a => (
+            <button
+              key={a}
+              onClick={() => handleAlgoChange(a)}
+              disabled={anyRunning}
+              className={`px-5 py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
+                algo === a ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {a}
+            </button>
+          ))}
         </div>
+
+        {/* Algorithm property chips */}
+        <div className="mt-2.5 flex items-center gap-2">
+          {ALGO_INFO[algo].chips.map((chip, i) => (
+            <div key={i} className="flex flex-col rounded-xl px-3 py-1.5"
+              style={{ backgroundColor: chip.bg, border: `1px solid ${chip.border}` }}>
+              <span className="text-xs font-bold" style={{ color: chip.text }}>{chip.label}</span>
+              <span style={{ fontSize: 9, color: chip.text, opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                {chip.sub}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Remaining controls row ── */}
+      <div className="mt-4 flex flex-wrap items-end gap-6">
 
         {/* Direction priority — vis mode only (irrelevant for test since player drives steps) */}
         {gameMode === 'vis' && (!isDijkstra ? (

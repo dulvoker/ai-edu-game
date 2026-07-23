@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 
 const NODE_R = 22
 
@@ -135,10 +135,38 @@ function preorder(n,  acc = []) { if (!n) return acc; acc.push(n.id); preorder(n
 function postorder(n, acc = []) { if (!n) return acc; postorder(n.left, acc); postorder(n.right, acc); acc.push(n.id); return acc }
 
 const TRAV_FNS  = { inorder, preorder, postorder }
+
+const STEP_STYLES = {
+  left:  { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8', hint: 'recurse' },
+  root:  { bg: '#fefce8', border: '#fde047', text: '#92400e', hint: 'visit'   },
+  right: { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9', hint: 'recurse' },
+}
+
 const TRAV_META = {
-  inorder:   { label: 'Inorder',   sub: 'Left → Root → Right' },
-  preorder:  { label: 'Preorder',  sub: 'Root → Left → Right' },
-  postorder: { label: 'Postorder', sub: 'Left → Right → Root' },
+  inorder: {
+    label: 'Inorder',
+    steps: [
+      { label: 'Left subtree',  ...STEP_STYLES.left  },
+      { label: 'Root',          ...STEP_STYLES.root  },
+      { label: 'Right subtree', ...STEP_STYLES.right },
+    ],
+  },
+  preorder: {
+    label: 'Preorder',
+    steps: [
+      { label: 'Root',          ...STEP_STYLES.root  },
+      { label: 'Left subtree',  ...STEP_STYLES.left  },
+      { label: 'Right subtree', ...STEP_STYLES.right },
+    ],
+  },
+  postorder: {
+    label: 'Postorder',
+    steps: [
+      { label: 'Left subtree',  ...STEP_STYLES.left  },
+      { label: 'Right subtree', ...STEP_STYLES.right },
+      { label: 'Root',          ...STEP_STYLES.root  },
+    ],
+  },
 }
 
 // ── Call Stack Display ────────────────────────────────────────
@@ -447,7 +475,23 @@ export default function TreeTraversalGame() {
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-xs text-gray-400">{TRAV_META[traversal].sub}</p>
+        {/* Traversal order banner */}
+        <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
+          {TRAV_META[traversal].steps.map((step, i, arr) => (
+            <Fragment key={i}>
+              <div className="flex flex-col items-center rounded-lg px-3 py-1.5"
+                style={{ backgroundColor: step.bg, border: `1px solid ${step.border}` }}>
+                <span className="text-xs font-bold" style={{ color: step.text }}>{step.label}</span>
+                <span style={{ fontSize: 9, color: step.text, opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  {step.hint}
+                </span>
+              </div>
+              {i < arr.length - 1 && (
+                <span className="text-base font-light text-gray-300">→</span>
+              )}
+            </Fragment>
+          ))}
+        </div>
       </div>
 
       {/* ── Speed selector + action buttons (vis mode) ── */}
