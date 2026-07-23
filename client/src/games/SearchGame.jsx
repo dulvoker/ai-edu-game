@@ -466,7 +466,8 @@ export default function SearchGame() {
   const [dkStats,    setDkStats]    = useState(null)
 
   // ── Test Yourself state ───────────────────────────────────────
-  const [testState, setTestState] = useState(null)
+  const [testState,    setTestState]    = useState(null)
+  const [showFrontier, setShowFrontier] = useState(false)
 
   const intervalRef  = useRef(null)
   const startTimeRef = useRef(null)
@@ -501,6 +502,7 @@ export default function SearchGame() {
     if (gameMode !== 'test') return
     if (startKey === endKey) return
     setTestState(initTestState(algo, cells, weights, startCell))
+    setShowFrontier(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [algo, uwCells, dkCells, dkWeights, uwStart, uwEnd, dkStart, dkEnd])
 
@@ -630,12 +632,14 @@ export default function SearchGame() {
     if (startKey === endKey || anyRunning) return
     setGameMode('test')
     setTestState(initTestState(algo, cells, weights, startCell))
+    setShowFrontier(false)
     setPlacingMode(null)
   }
 
   const handleBackToVis = () => {
     setGameMode('vis')
     setTestState(null)
+    setShowFrontier(false)
     setPlacingMode(null)
   }
 
@@ -720,8 +724,10 @@ export default function SearchGame() {
   }
 
   const handleTryAgain = () => {
-    if (startKey !== endKey)
+    if (startKey !== endKey) {
       setTestState(initTestState(algo, cells, weights, startCell))
+      setShowFrontier(false)
+    }
   }
 
   const onDragStart = (i) => { dragFrom.current = i }
@@ -921,8 +927,8 @@ export default function SearchGame() {
           ))}
         </div>
 
-        {/* Frontier panel — test mode only */}
-        {gameMode === 'test' && (
+        {/* Frontier panel — revealed by hint button */}
+        {gameMode === 'test' && showFrontier && (
           <FrontierPanel ts={testState} algo={algo} isDijkstra={isDijkstra} />
         )}
       </div>
@@ -950,9 +956,10 @@ export default function SearchGame() {
         <ComplexityDashboard stats={stats} isDijkstra={isDijkstra} />
       )}
 
-      {/* ── Test mode: instruction / feedback / hint ── */}
+      {/* ── Test mode: instruction / feedback / hints ── */}
       {gameMode === 'test' && testState && !testDone && (
-        <div className="mt-3 flex items-center gap-4">
+        <div className="mt-3 flex items-center gap-3">
+          {/* Feedback */}
           {testFeedback === 'correct' && (
             <span className="text-sm font-semibold text-green-600">✓ Correct!</span>
           )}
@@ -964,13 +971,35 @@ export default function SearchGame() {
               Click the cell the algorithm visits next
             </span>
           )}
-          <button
-            onClick={() => setTestState(s => s ? { ...s, showHint: true, wrongThisStep: true } : s)}
-            disabled={testState.showHint}
-            className="ml-auto rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700 hover:bg-yellow-100 disabled:opacity-40 transition-colors"
-          >
-            Show hint
-          </button>
+
+          {/* Hint buttons */}
+          <div className="ml-auto flex gap-2">
+            {/* Hint 1: show/hide the frontier panel */}
+            {!showFrontier ? (
+              <button
+                onClick={() => setShowFrontier(true)}
+                className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700 hover:bg-yellow-100 transition-colors"
+              >
+                Show queue
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowFrontier(false)}
+                className="rounded-lg border border-yellow-300 bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 hover:bg-yellow-200 transition-colors"
+              >
+                Hide queue
+              </button>
+            )}
+
+            {/* Hint 2: highlight the correct next cell */}
+            <button
+              onClick={() => setTestState(s => s ? { ...s, showHint: true, wrongThisStep: true } : s)}
+              disabled={testState.showHint}
+              className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-40 transition-colors"
+            >
+              Highlight cell
+            </button>
+          </div>
         </div>
       )}
 
