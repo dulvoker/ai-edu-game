@@ -495,13 +495,14 @@ export default function SearchGame() {
 
   const visFrame = frames[frameIdx] ?? { visited: new Set(), frontier: new Set() }
 
-  // ── Test state init / reset when relevant things change ───────
+  // ── Reinit test state when algo / maze / endpoints change while in test mode ──
+  // gameMode transitions are handled explicitly in handleEnterTest / handleBackToVis.
   useEffect(() => {
-    if (gameMode !== 'test') { setTestState(null); return }
+    if (gameMode !== 'test') return
     if (startKey === endKey) return
     setTestState(initTestState(algo, cells, weights, startCell))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameMode, algo, uwCells, dkCells, dkWeights, uwStart, uwEnd, dkStart, dkEnd])
+  }, [algo, uwCells, dkCells, dkWeights, uwStart, uwEnd, dkStart, dkEnd])
 
   // ── Auto-clear test feedback after 800ms ──────────────────────
   useEffect(() => {
@@ -625,9 +626,16 @@ export default function SearchGame() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
-  const handleModeChange = (mode) => {
-    if (anyRunning) return
-    setGameMode(mode)
+  const handleEnterTest = () => {
+    if (startKey === endKey || anyRunning) return
+    setGameMode('test')
+    setTestState(initTestState(algo, cells, weights, startCell))
+    setPlacingMode(null)
+  }
+
+  const handleBackToVis = () => {
+    setGameMode('vis')
+    setTestState(null)
     setPlacingMode(null)
   }
 
@@ -730,32 +738,21 @@ export default function SearchGame() {
 
   if (showTutorial) return <Tutorial onDismiss={() => setShowTutorial(false)} />
 
-  const testDone    = testState?.done
+  const testDone     = testState?.done
   const testFeedback = testState?.feedback
-  const accuracy    = testState?.steps > 0 ? Math.round((testState.firstTry / testState.steps) * 100) : 0
+  const accuracy     = testState?.steps > 0 ? Math.round((testState.firstTry / testState.steps) * 100) : 0
 
   return (
     <div>
       <h1 className="text-3xl font-bold text-gray-900">Search Algorithms</h1>
 
-      {/* ── Mode tabs ── */}
-      <div className="mt-4 flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit">
-        {[['vis', 'Visualisation'], ['test', 'Test Yourself']].map(([m, label]) => (
-          <button
-            key={m}
-            onClick={() => handleModeChange(m)}
-            disabled={anyRunning}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${
-              gameMode === m ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* ── Step badge ── */}
+      <p className="mt-1 text-sm text-gray-400">
+        {gameMode === 'vis' ? 'Step 1 — Watch the algorithm' : 'Step 2 — Test yourself'}
+      </p>
 
       {/* ── Controls row ── */}
-      <div className="mt-5 flex flex-wrap items-end gap-6">
+      <div className="mt-4 flex flex-wrap items-end gap-6">
 
         {/* Algorithm toggle */}
         <div>
@@ -776,8 +773,8 @@ export default function SearchGame() {
           </div>
         </div>
 
-        {/* Direction priority */}
-        {!isDijkstra ? (
+        {/* Direction priority — vis mode only (irrelevant for test since player drives steps) */}
+        {gameMode === 'vis' && (!isDijkstra ? (
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
               Direction Priority <span className="normal-case font-normal">(drag to reorder)</span>
@@ -803,9 +800,9 @@ export default function SearchGame() {
               Dijkstra picks the lowest-cost cell next, not based on direction order
             </p>
           </div>
-        )}
+        ))}
 
-        {/* Speed slider — visualisation only */}
+        {/* Speed slider — vis mode only */}
         {gameMode === 'vis' && (
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -819,48 +816,64 @@ export default function SearchGame() {
 
         {/* Action buttons */}
         <div className="ml-auto flex gap-2">
-          <button onClick={handleNewMaze} disabled={anyRunning}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
-            New Maze
-          </button>
-          {gameMode === 'vis' && <>
-            <button onClick={handleStart} disabled={!canRun}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
-              Start
-            </button>
-            <button onClick={handleReset} disabled={frameIdx === -1}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
-              Reset
-            </button>
-          </>}
-          {gameMode === 'test' && testState && (
-            <button onClick={handleTryAgain}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-              Try Again
-            </button>
+          {gameMode === 'vis' && (
+            <>
+              <button onClick={handleNewMaze} disabled={anyRunning}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                New Maze
+              </button>
+              <button onClick={handleReset} disabled={frameIdx === -1}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                Reset
+              </button>
+              <button onClick={handleStart} disabled={!canRun}
+                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                Run Visualisation
+              </button>
+            </>
+          )}
+          {gameMode === 'test' && (
+            <>
+              <button onClick={handleBackToVis}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                ← Watch again
+              </button>
+              <button onClick={handleNewMaze}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                New Maze
+              </button>
+              {testState && !testDone && (
+                <button onClick={handleTryAgain}
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                  Restart test
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* ── Set Start / Set End ── */}
-      <div className="mt-4 flex items-center gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Place:</p>
-        {[
-          { mode: 'start', label: 'Set Start', active: 'bg-green-600 text-white',   inactive: 'border border-green-300 text-green-700 hover:bg-green-50' },
-          { mode: 'end',   label: 'Set End',   active: 'bg-red-500 text-white',     inactive: 'border border-red-300 text-red-600 hover:bg-red-50' },
-        ].map(({ mode, label, active, inactive }) => (
-          <button key={mode}
-            disabled={gameMode === 'vis' && (running || finished)}
-            onClick={() => setPlacingMode(p => p === mode ? null : mode)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${placingMode === mode ? active : inactive}`}
-          >
-            {label}
-          </button>
-        ))}
-        {placingMode && (
-          <p className="text-xs italic text-gray-400">Click any cell to place the {placingMode} point</p>
-        )}
-      </div>
+      {/* ── Set Start / Set End — vis mode only ── */}
+      {gameMode === 'vis' && (
+        <div className="mt-4 flex items-center gap-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Place:</p>
+          {[
+            { mode: 'start', label: 'Set Start', active: 'bg-green-600 text-white',   inactive: 'border border-green-300 text-green-700 hover:bg-green-50' },
+            { mode: 'end',   label: 'Set End',   active: 'bg-red-500 text-white',     inactive: 'border border-red-300 text-red-600 hover:bg-red-50' },
+          ].map(({ mode, label, active, inactive }) => (
+            <button key={mode}
+              disabled={running || finished}
+              onClick={() => setPlacingMode(p => p === mode ? null : mode)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${placingMode === mode ? active : inactive}`}
+            >
+              {label}
+            </button>
+          ))}
+          {placingMode && (
+            <p className="text-xs italic text-gray-400">Click any cell to place the {placingMode} point</p>
+          )}
+        </div>
+      )}
 
       {/* ── Legend ── */}
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
@@ -914,7 +927,30 @@ export default function SearchGame() {
         )}
       </div>
 
-      {/* ── Test mode feedback & hint ── */}
+      {/* ── Post-animation CTA (vis mode, animation done) ── */}
+      {gameMode === 'vis' && finished && (
+        <div className="mt-5 flex items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 max-w-lg">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-900">Algorithm complete!</p>
+            <p className="mt-0.5 text-xs text-blue-600">
+              Now step through it yourself — click each cell the algorithm visits next.
+            </p>
+          </div>
+          <button
+            onClick={handleEnterTest}
+            className="shrink-0 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+          >
+            Test Yourself →
+          </button>
+        </div>
+      )}
+
+      {/* ── Complexity dashboard (vis mode) ── */}
+      {gameMode === 'vis' && stats && stats.time !== null && (
+        <ComplexityDashboard stats={stats} isDijkstra={isDijkstra} />
+      )}
+
+      {/* ── Test mode: instruction / feedback / hint ── */}
       {gameMode === 'test' && testState && !testDone && (
         <div className="mt-3 flex items-center gap-4">
           {testFeedback === 'correct' && (
@@ -938,7 +974,7 @@ export default function SearchGame() {
         </div>
       )}
 
-      {/* ── Test mode results ── */}
+      {/* ── Test mode: results ── */}
       {gameMode === 'test' && testDone && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-5 max-w-sm">
           <h3 className="font-semibold text-gray-900">Test complete!</h3>
@@ -950,7 +986,10 @@ export default function SearchGame() {
               Correct on first try: <strong className="text-gray-900">{testState.firstTry} / {testState.steps}</strong>
             </p>
             <p className="text-gray-600">
-              Accuracy: <strong className={accuracy === 100 ? 'text-green-600' : accuracy >= 70 ? 'text-yellow-600' : 'text-red-500'}>{accuracy}%</strong>
+              Accuracy:{' '}
+              <strong className={accuracy === 100 ? 'text-green-600' : accuracy >= 70 ? 'text-yellow-600' : 'text-red-500'}>
+                {accuracy}%
+              </strong>
             </p>
           </div>
           <p className="mt-3 text-sm text-gray-500">
@@ -958,24 +997,23 @@ export default function SearchGame() {
               ? 'Perfect! You think like the algorithm 🎯'
               : accuracy >= 70
               ? 'Great job! A few missteps 👍'
-              : 'Keep practising — check the Visualisation mode for hints'}
+              : 'Keep practising — watch the visualisation again for hints'}
           </p>
           <div className="mt-4 flex gap-2">
+            <button onClick={handleBackToVis}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+              ← Watch again
+            </button>
             <button onClick={handleTryAgain}
               className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
               Try Again
             </button>
-            <button onClick={handleNewMaze}
+            <button onClick={() => { handleNewMaze(); handleBackToVis() }}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
               New Maze
             </button>
           </div>
         </div>
-      )}
-
-      {/* ── Visualisation complexity dashboard ── */}
-      {gameMode === 'vis' && stats && stats.time !== null && (
-        <ComplexityDashboard stats={stats} isDijkstra={isDijkstra} />
       )}
     </div>
   )
