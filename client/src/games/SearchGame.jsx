@@ -6,9 +6,10 @@ const ROWS = 6
 const COLS = 6
 
 const SPEEDS = [
-  { label: 'Slow',   ms: 400 },
-  { label: 'Normal', ms: 200 },
-  { label: 'Fast',   ms: 60  },
+  { label: 'Slow',         ms: 400  },
+  { label: 'Normal',       ms: 200  },
+  { label: 'Fast',         ms: 60   },
+  { label: 'Step by step', ms: null },
 ]
 
 const DIRS = {
@@ -509,10 +510,13 @@ export default function SearchGame() {
   const setStartCell = isDijkstra ? setDkStart : setUwStart
   const setEndCell   = isDijkstra ? setDkEnd   : setUwEnd
 
-  const startKey   = key(startCell.r, startCell.c)
-  const endKey     = key(endCell.r,   endCell.c)
-  const canRun     = !running && !finished && startKey !== endKey
-  const anyRunning = uwRunning || dkRunning
+  const startKey    = key(startCell.r, startCell.c)
+  const endKey      = key(endCell.r,   endCell.c)
+  const isStepMode  = SPEEDS[speed].ms === null
+  const isStepping  = isStepMode && frameIdx >= 0 && !finished
+  const canRun      = !running && !finished && startKey !== endKey && !isStepping
+  const canStep     = isStepping && frameIdx < frames.length - 1
+  const anyRunning  = uwRunning || dkRunning
 
   const visFrame = frames[frameIdx] ?? { visited: new Set(), frontier: new Set() }
 
@@ -725,16 +729,29 @@ export default function SearchGame() {
   const handleStart = () => {
     if (!canRun) return
     startTimeRef.current = performance.now()
+    const autoPlay = SPEEDS[speed].ms !== null
     if (isDijkstra) {
       const result = traceDijkstra(dkCells, dkWeights, dkStart, dkEnd)
       setDkFrames(result.frames); setDkPath(result.path); setDkFrameIdx(0)
       setDkStats({ nodesExpanded: result.nodesExpanded, peakFrontier: result.peakFrontier, pathLength: result.path.size, totalCost: result.totalCost, time: null })
-      setDkRunning(true)
+      if (autoPlay) setDkRunning(true)
     } else {
       const result = traceSearchAlgorithm(uwCells, algo, dirOrder, uwStart, uwEnd)
       setUwFrames(result.frames); setUwPath(result.path); setUwFrameIdx(0)
       setUwStats({ nodesExpanded: result.nodesExpanded, peakFrontier: result.peakFrontier, pathLength: result.path.size, totalCost: null, time: null })
-      setUwRunning(true)
+      if (autoPlay) setUwRunning(true)
+    }
+  }
+
+  const handleNextStep = () => {
+    const nextIdx = frameIdx + 1
+    const atEnd   = nextIdx >= frames.length - 1
+    if (isDijkstra) {
+      setDkFrameIdx(nextIdx)
+      if (atEnd) setDkFinished(true)
+    } else {
+      setUwFrameIdx(nextIdx)
+      if (atEnd) setUwFinished(true)
     }
   }
 
@@ -846,15 +863,24 @@ export default function SearchGame() {
           </div>
         ))}
 
-        {/* Speed slider — vis mode only */}
+        {/* Speed — button group, vis mode only */}
         {gameMode === 'vis' && (
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-              Speed — <span className="normal-case font-normal">{SPEEDS[speed].label}</span>
-            </p>
-            <input type="range" min={0} max={SPEEDS.length - 1} value={speed}
-              onChange={e => setSpeed(Number(e.target.value))}
-              className="w-32 accent-blue-600" />
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Speed</p>
+            <div className="flex overflow-hidden rounded-lg border border-gray-200">
+              {SPEEDS.map((s, i) => (
+                <button
+                  key={s.label}
+                  onClick={() => setSpeed(i)}
+                  disabled={anyRunning || isStepping}
+                  className={`px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
+                    speed === i ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -870,10 +896,24 @@ export default function SearchGame() {
                 className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors">
                 Reset
               </button>
-              <button onClick={handleStart} disabled={!canRun}
-                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
-                Run Visualisation
-              </button>
+              {/* Step controls — shown when step-by-step mode is active */}
+              {isStepping && (
+                <>
+                  <span className="flex items-center px-2 text-xs text-gray-400 tabular-nums">
+                    {frameIdx + 1} / {frames.length}
+                  </span>
+                  <button onClick={handleNextStep} disabled={!canStep}
+                    className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                    Next step →
+                  </button>
+                </>
+              )}
+              {!isStepping && (
+                <button onClick={handleStart} disabled={!canRun}
+                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                  {isStepMode ? 'Begin' : 'Run Visualisation'}
+                </button>
+              )}
             </>
           )}
           {gameMode === 'test' && (
