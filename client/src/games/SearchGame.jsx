@@ -6,9 +6,9 @@ const ROWS = 6
 const COLS = 6
 
 const SPEEDS = [
-  { label: 'Slow',   ms: 200 },
-  { label: 'Normal', ms: 100 },
-  { label: 'Fast',   ms: 30  },
+  { label: 'Slow',   ms: 400 },
+  { label: 'Normal', ms: 200 },
+  { label: 'Fast',   ms: 60  },
 ]
 
 const DIRS = {
