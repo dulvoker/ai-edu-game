@@ -92,6 +92,7 @@ function traceSearchAlgorithm(cells, algo, dirOrder, startCell, endCell) {
   const snap = () => frames.push({
     visited:  new Set(visited),
     frontier: new Set(ds.map(({ r, c }) => key(r, c))),
+    ordered:  algo === 'DFS' ? [...ds].reverse() : [...ds],
   })
   snap()
 
@@ -134,7 +135,14 @@ function traceDijkstra(cells, weights, startCell, endCell) {
   let peakFrontier = 1
 
   const openKeys = () => new Set(pq.map(({ r, c }) => key(r, c)).filter(k => !settled.has(k)))
-  const snap = () => frames.push({ visited: new Set(settled), frontier: openKeys() })
+  const openOrdered = () => {
+    const seen = new Set()
+    return pq
+      .filter(e => !settled.has(key(e.r, e.c)))
+      .sort((a, b) => a.cost - b.cost)
+      .filter(e => { const k = key(e.r, e.c); if (seen.has(k)) return false; seen.add(k); return true })
+  }
+  const snap = () => frames.push({ visited: new Set(settled), frontier: openKeys(), ordered: openOrdered() })
   snap()
 
   while (pq.length) {
@@ -386,48 +394,60 @@ function ComplexityDashboard({ stats, isDijkstra }) {
   )
 }
 
-// ── Frontier Panel ────────────────────────────────────────────
+// ── Queue Display ─────────────────────────────────────────────
 
-function FrontierPanel({ ts, algo, isDijkstra }) {
-  if (!ts) return null
-
-  let items = []
-  if (isDijkstra) {
-    if (!ts.pq || !ts.settled) return null  // guard stale state
-    const seen = new Set()
-    items = ts.pq
-      .filter(e => !ts.settled.has(key(e.r, e.c)))
-      .sort((a, b) => a.cost - b.cost)
-      .filter(e => { const k = key(e.r, e.c); if (seen.has(k)) return false; seen.add(k); return true })
-  } else {
-    if (!ts.ds) return null  // guard stale state
-    items = algo === 'BFS' ? ts.ds : [...ts.ds].reverse()
-  }
-
-  const label = isDijkstra ? 'Priority Queue' : algo === 'BFS' ? 'Queue' : 'Stack'
-  const sub   = isDijkstra ? 'sorted by cost' : algo === 'BFS' ? 'front → back' : 'top → bottom'
+function QueueDisplay({ items, algo, isDijkstra }) {
+  const label    = isDijkstra ? 'Priority Queue' : algo === 'BFS' ? 'Queue' : 'Stack'
+  const sublabel = isDijkstra ? 'lowest cost first' : algo === 'BFS' ? 'front → back' : 'top → bottom'
 
   return (
-    <div className="w-48 shrink-0">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="text-xs text-gray-400 mb-2">{sub}</p>
-      {items.length === 0 ? (
-        <p className="text-xs italic text-gray-300">empty</p>
-      ) : (
-        <div className="space-y-1 max-h-[26rem] overflow-y-auto pr-1">
-          {items.map((e, i) => (
-            <div key={i} className={`rounded px-2 py-1 text-xs font-mono flex items-center justify-between ${
-              i === 0
-                ? 'bg-yellow-50 border border-yellow-300 text-yellow-800 font-semibold'
-                : 'bg-gray-50 border border-gray-100 text-gray-500'
-            }`}>
-              <span>({e.r},{e.c})</span>
-              {isDijkstra && <span className="text-gray-400 ml-1">·{e.cost}</span>}
-              {i === 0 && <span className="ml-1 text-yellow-500 text-xs">next</span>}
+    <div className="shrink-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm" style={{ width: 156 }}>
+      {/* Header */}
+      <div className="border-b border-gray-100 bg-gray-50 px-3 py-2.5">
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">{label}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{sublabel}</p>
+      </div>
+
+      {/* Items */}
+      <div className="max-h-80 space-y-1.5 overflow-y-auto p-2">
+        {items.length === 0 ? (
+          <p className="py-3 text-center text-xs italic text-gray-300">empty</p>
+        ) : items.map((e, i) => {
+          const isNext = i === 0
+          return (
+            <div
+              key={`${e.r}-${e.c}-${i}`}
+              style={{
+                backgroundColor: isNext ? '#fefce8' : '#f9fafb',
+                borderColor:     isNext ? '#fde047' : '#f3f4f6',
+                transform:       isNext ? 'scale(1.03)' : 'scale(1)',
+                transition:      'all 0.15s ease',
+              }}
+              className="flex items-center justify-between rounded-xl border px-2.5 py-1.5"
+            >
+              <div className="flex items-center gap-1.5">
+                {isNext && (
+                  <span style={{ color: '#ca8a04', fontSize: 10 }}>▶</span>
+                )}
+                <span className="font-mono text-xs font-semibold" style={{ color: isNext ? '#713f12' : '#6b7280' }}>
+                  ({e.r}, {e.c})
+                </span>
+              </div>
+              {isDijkstra && (
+                <span
+                  className="rounded-md px-1.5 py-0.5 text-xs font-bold"
+                  style={{
+                    backgroundColor: isNext ? '#fde047' : '#e5e7eb',
+                    color:           isNext ? '#713f12' : '#9ca3af',
+                  }}
+                >
+                  {e.cost}
+                </span>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -553,6 +573,24 @@ export default function SearchGame() {
     if (dkFinished && dkStats && dkStats.time === null)
       setDkStats(s => s ? { ...s, time: Math.round(performance.now() - startTimeRef.current) } : s)
   }, [dkFinished])
+
+  // ── Derived ordered items for queue display ───────────────────
+
+  const visOrdered = visFrame.ordered ?? []
+
+  const testOrdered = (() => {
+    if (!testState) return []
+    if (isDijkstra) {
+      if (!testState.pq || !testState.settled) return []
+      const seen = new Set()
+      return testState.pq
+        .filter(e => !testState.settled.has(key(e.r, e.c)))
+        .sort((a, b) => a.cost - b.cost)
+        .filter(e => { const k = key(e.r, e.c); if (seen.has(k)) return false; seen.add(k); return true })
+    }
+    if (!testState.ds) return []
+    return algo === 'BFS' ? testState.ds : [...testState.ds].reverse()
+  })()
 
   // ── Derived for test mode ─────────────────────────────────────
 
@@ -927,9 +965,12 @@ export default function SearchGame() {
           ))}
         </div>
 
-        {/* Frontier panel — revealed by hint button */}
+        {/* Queue panel — always in vis mode (once started), revealed by hint in test mode */}
+        {gameMode === 'vis' && frameIdx >= 0 && (
+          <QueueDisplay items={visOrdered} algo={algo} isDijkstra={isDijkstra} />
+        )}
         {gameMode === 'test' && showFrontier && (
-          <FrontierPanel ts={testState} algo={algo} isDijkstra={isDijkstra} />
+          <QueueDisplay items={testOrdered} algo={algo} isDijkstra={isDijkstra} />
         )}
       </div>
 
