@@ -3,11 +3,13 @@ import { games } from '../data/content'
 import SearchGame from '../games/SearchGame'
 import DecisionTreeGame from '../games/DecisionTreeGame'
 import TreeTraversalGame from '../games/TreeTraversalGame'
+import RLGame from '../games/RLGame'
 
 const GAME_COMPONENTS = {
   search: SearchGame,
   'decision-tree': DecisionTreeGame,
   'tree-traversal': TreeTraversalGame,
+  'reinforcement-learning': RLGame,
 }
 
 export default function GameDetailPage() {

@@ -22,7 +22,7 @@ export const games = [
   {
     id: 'reinforcement-learning',
     title: 'Reinforcement Learning',
-    description: 'Train an agent by designing its reward structure',
+    description: 'Train an agent by designing its reward structure and watch it learn.',
   },
 ]
 
