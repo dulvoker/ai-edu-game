@@ -46,10 +46,8 @@ function step(r, c, actionIdx, rewards) {
   let nc = c + dc
 
   if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE || isObstacle(nr, nc)) {
-    // bump into wall or edge: stay in place, still pay obstacle/step cost
-    const hitWall = nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE ? false : isObstacle(nr, nc)
-    const reward = hitWall ? rewards.obstacle : rewards.step
-    return { nr: r, nc: c, reward, done: false }
+    // bump into a wall, the grid edge, or an obstacle: stay in place, pay the obstacle cost
+    return { nr: r, nc: c, reward: rewards.obstacle, done: false }
   }
   if (isGoal(nr, nc)) {
     return { nr, nc, reward: rewards.goal, done: true }
@@ -112,7 +110,7 @@ function greedyPath(q) {
     const qs = q[key(r, c)]
     const maxQ = Math.max(...qs)
     const bestActions = qs.map((v, i) => (v === maxQ ? i : -1)).filter(i => i !== -1)
-    const actionIdx = bestActions[0]
+    const actionIdx = bestActions[Math.floor(Math.random() * bestActions.length)]
     const { dr, dc } = ACTIONS[actionIdx]
     let nr = r + dr
     let nc = c + dc
