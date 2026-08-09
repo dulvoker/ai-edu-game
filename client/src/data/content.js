@@ -24,6 +24,11 @@ export const games = [
     title: 'Reinforcement Learning',
     description: 'Train an agent by designing its reward structure and watch it learn.',
   },
+  {
+    id: 'naive-bayes',
+    title: 'Naive Bayes Spam Filter',
+    description: 'Train a spam filter by labelling emails, then watch it classify new ones using probability.',
+  },
 ]
 
 export const tests = [

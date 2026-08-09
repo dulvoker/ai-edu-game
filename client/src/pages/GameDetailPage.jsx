@@ -4,12 +4,14 @@ import SearchGame from '../games/SearchGame'
 import DecisionTreeGame from '../games/DecisionTreeGame'
 import TreeTraversalGame from '../games/TreeTraversalGame'
 import RLGame from '../games/RLGame'
+import NaiveBayesGame from '../games/NaiveBayesGame'
 
 const GAME_COMPONENTS = {
   search: SearchGame,
   'decision-tree': DecisionTreeGame,
   'tree-traversal': TreeTraversalGame,
   'reinforcement-learning': RLGame,
+  'naive-bayes': NaiveBayesGame,
 }
 
 export default function GameDetailPage() {
