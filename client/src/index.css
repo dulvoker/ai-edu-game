@@ -1,1 +1,68 @@
 @import "tailwindcss";
+
+@font-face {
+  font-family: 'JB Mono';
+  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
+  font-weight: 400 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Serif';
+  src: url('/fonts/source-serif.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-display: 'JB Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-body: 'Source Serif', Georgia, serif;
+}
+
+:root {
+  --bg: #EDF1F3;
+  --bg-grid: #DEE6E8;
+  --surface: #FFFFFF;
+  --ink: #16212C;
+  --ink-soft: #4C5B67;
+  --ink-faint: #8B98A1;
+  --line: #D8E0E2;
+  --accent: #DA5D0A;
+  --accent-bright: #E8630C;
+  --accent-soft: #FBE2CC;
+  --accent-ink: #7A2E00;
+  --on-accent: #FFFFFF;
+  --focus: #1D6FE0;
+}
+
+/*
+ * A dark variant of this token set exists (see the shell-redesign mockup)
+ * but isn't wired up here: the game components (SearchGame, DecisionTreeGame,
+ * TreeTraversalGame, RLGame, NaiveBayesGame) and QuizRunner all hardcode
+ * light-only Tailwind classes (text-gray-900, bg-white, bg-blue-50, ...).
+ * Auto-switching the shell to dark via prefers-color-scheme without also
+ * retrofitting every game would put dark shell chrome around unreadable
+ * dark-on-dark game text. Revisit once the games themselves support dark
+ * mode.
+ */
+
+* { box-sizing: border-box; }
+
+body {
+  background:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0 / 100% 28px,
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px) 0 0 / 28px 100%,
+    var(--bg);
+  background-attachment: local;
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+:focus-visible {
+  outline: 2.5px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}

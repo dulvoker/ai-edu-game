@@ -16,9 +16,9 @@ export default function TestDetailPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-      <div className="mt-8 flex items-center justify-center h-64 bg-gray-100 rounded-xl border-2 border-dashed border-gray-300">
-        <p className="text-gray-400 font-medium">Test coming soon</p>
+      <h1 className="font-display text-3xl font-bold text-[var(--ink)]">{title}</h1>
+      <div className="mt-8 flex items-center justify-center h-64 rounded-[7px] border border-dashed border-[var(--line)] bg-[var(--surface)]">
+        <p className="text-[var(--ink-faint)] font-medium">Test coming soon</p>
       </div>
     </div>
   )
